@@ -311,8 +311,14 @@ def get_uuid_token(thumbprint: str = None) -> str:
         raise Exception(f"Auth failed (403): {err}")
 
     token_response.raise_for_status()
-    resp = token_response.json()
+    try:
+        resp = token_response.json()
+    except Exception:
+        raw = token_response.text[:300] or "<empty response>"
+        raise Exception(f"Auth failed: /auth/simpleSignIn returned non-JSON response: {raw}")
     _uuid_token = resp.get("token") or resp.get("uuidToken", "")
+    if not _uuid_token:
+        raise Exception(f"Auth failed: /auth/simpleSignIn response has no token fields. Keys: {', '.join(resp.keys()) or '<none>'}")
     return _uuid_token
 
 

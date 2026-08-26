@@ -455,10 +455,19 @@ def cz_diagnose():
                       headers={"Content-Type": "application/json", "accept": "application/json"},
                       timeout=15)
         if r2.status_code == 200:
-            token = r2.json().get("token", "")
-            steps.append({"step": "simpleSignIn", "ok": True, "detail": f"Token received ({len(token)} chars)"})
+            try:
+                body = r2.json()
+            except Exception:
+                err = r2.text[:300] or "<empty response>"
+                steps.append({"step": "simpleSignIn", "ok": False, "detail": f"HTTP 200 non-JSON response: {err}"})
+            else:
+                token = body.get("token") or body.get("uuidToken", "")
+                if token:
+                    steps.append({"step": "simpleSignIn", "ok": True, "detail": f"Token received ({len(token)} chars)"})
+                else:
+                    steps.append({"step": "simpleSignIn", "ok": False, "detail": f"HTTP 200 without token fields. Keys: {', '.join(body.keys()) or '<none>'}"})
         else:
-            err = r2.text[:300]
+            err = r2.text[:300] or "<empty response>"
             steps.append({"step": "simpleSignIn", "ok": False, "detail": f"HTTP {r2.status_code}: {err}"})
     except Exception as e:
         steps.append({"step": "simpleSignIn", "ok": False, "detail": str(e)[:200]})
