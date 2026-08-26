@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 from sqlalchemy import or_
 from app import db
@@ -93,11 +94,20 @@ def get_product_group_name(numeric_id) -> str:
 
 def load_settings() -> dict:
     if SETTINGS_PATH.exists():
-        return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        raw = SETTINGS_PATH.read_text(encoding="utf-8")
+        if not raw.strip():
+            return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            backup = SETTINGS_PATH.with_name(f"settings.invalid-{datetime.now():%Y%m%d%H%M%S}.json")
+            SETTINGS_PATH.replace(backup)
+            return {}
     return {}
 
 
 def save_settings(data: dict):
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -369,6 +379,5 @@ def find_first_unmarked_unit(sku_id: int, warehouse_id: int = None) -> Unit:
     if warehouse_id:
         q = q.filter(Unit.warehouse_id == warehouse_id)
     return q.first()
-
 
 
