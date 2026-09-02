@@ -68,6 +68,10 @@ def create_cz_app(
         db.create_all()
         _seed_profiles()
 
+    # ── Blueprint ──────────────────────────────────────────────────────────
+    from app.chestny.routes import cz_api
+    app.register_blueprint(cz_api)
+
     # ── Health endpoint ───────────────────────────────────────────────────
     @app.route("/health")
     def health():
