@@ -1,17 +1,47 @@
-# Environment & secrets
+# ===== Environment & secrets =====
 .env
+.env.*
+secrets.toml
+secrets.yaml
 
-# Database
+# ===== Database =====
 instance/
 *.db
 *.db-journal
 *.db.bak
+*.sqlite
+*.sqlite3
 
-# Backups
+# ===== User data files (real XLSX/CSV) =====
+*.xlsx
+*.csv
+
+# Allow synthetic test fixtures
+!tests/fixtures/synthetic/*.xlsx
+!tests/fixtures/synthetic/*.csv
+
+# ===== Certificates & keys =====
+*.p12
+*.pfx
+*.pem
+*.cer
+*.crt
+*.key
+*.der
+*.p7b
+*.p7s
+
+# ===== Generated reports & output =====
+reports/
+output/
+tmp/
+*.log
+
+# ===== Backups =====
 backups/
 app/backups/
 
-# Python
+# ===== Python =====
 __pycache__/
 *.pyc
 *.pyo
@@ -21,20 +51,19 @@ build/
 *.egg
 venv/
 .venv/
+.python-version
 
-# IDE
+# ===== IDE =====
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Binaries
-*.exe
-
-# OS
+# ===== OS =====
 Thumbs.db
 Desktop.ini
 .DS_Store
+*.~
 
-# MiMoCode
+# ===== Project-specific =====
 .mimocode/
