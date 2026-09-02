@@ -12,8 +12,10 @@ import secrets
 from pathlib import Path
 from typing import Optional
 
-from flask import Flask, render_template
+from flask import Flask, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
+
+from app.chestny.services.active_imports import ActiveImportStore
 
 db = SQLAlchemy()
 
@@ -79,6 +81,18 @@ def create_cz_app(
     # ── Blueprint ──────────────────────────────────────────────────────────
     from app.chestny.routes import cz_api
     app.register_blueprint(cz_api)
+
+    # ── Active import store ────────────────────────────────────────────────
+    app.extensions["active_imports"] = ActiveImportStore(5, 1800)
+    app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MiB
+
+    @app.errorhandler(413)
+    def _json_413(e):
+        return jsonify({"code": "file_too_large", "message": "Файл превышает 10 MiB"}), 413
+
+    # ── Import blueprint ───────────────────────────────────────────────────
+    from app.chestny.import_routes import cz_import_api
+    app.register_blueprint(cz_import_api)
 
     # ── Health endpoint ───────────────────────────────────────────────────
     @app.route("/health")
