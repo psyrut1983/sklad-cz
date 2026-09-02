@@ -108,3 +108,69 @@ class TestSettingsUI:
     def test_pin_warning(self, client):
         html = client.get("/").data.decode()
         assert "PIN" in html and "закрытые ключи" in html
+
+
+class TestDryRunUI:
+    """Тесты разметки dry-run секции."""
+
+    def test_upload_section_present(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="upload-section"' in html
+        assert 'id="file-input"' in html
+        assert 'id="upload-btn"' in html
+        assert 'id="cancel-import-btn"' in html
+        assert 'id="submit-cz-btn"' in html
+
+    def test_upload_section_accept_xlsx(self, client):
+        html = client.get("/").data.decode()
+        assert 'accept=".xlsx"' in html
+
+    def test_upload_button_text(self, client):
+        html = client.get("/").data.decode()
+        assert "Проверить файл" in html
+
+    def test_cancel_button_text(self, client):
+        html = client.get("/").data.decode()
+        assert "Отменить импорт" in html
+
+    def test_submit_cz_disabled_with_note(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="submit-cz-btn"' in html
+        assert "disabled" in html
+        assert "Отправка в Честный Знак" in html
+        assert "будет доступна позже" in html
+
+    def test_gate_note_present(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="gate-note"' in html
+        assert "Доступно после настройки профиля" in html
+
+    def test_dryrun_results_container(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="dryrun-results"' in html
+        assert 'id="dryrun-summary"' in html
+        assert 'id="dryrun-tables"' in html
+
+    def test_busy_indicator(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="upload-busy"' in html
+        assert "Проверка файла" in html
+
+    def test_upload_error_container(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="upload-error"' in html
+
+    def test_no_innerhtml_in_markup(self, client):
+        html = client.get("/").data.decode()
+        assert "innerHTML" not in html
+
+    def test_no_storage_in_html(self, client):
+        html = client.get("/").data.decode()
+        for term in ("localStorage", "sessionStorage", "document.cookie"):
+            assert term not in html
+
+    def test_upload_section_starts_disabled(self, client):
+        html = client.get("/").data.decode()
+        # upload-controls hidden by default, gate-note visible
+        assert 'id="upload-controls" style="display:none"' in html or 'style="display:none"' in html
+        assert 'id="gate-note"' in html

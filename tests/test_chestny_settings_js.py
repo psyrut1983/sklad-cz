@@ -98,7 +98,7 @@ class TestSettingsJS:
 
     def test_saved_tp_option_short(self, client):
         js = client.get("/static/chestny/settings.js").data.decode()
-        assert "\\u0421\\u043e\\u0445\\u0440\\u0430\\u043d\\u0451\\u043d" in js
+        assert "Сохранён" in js or "\\u0421\\u043e\\u0445\\u0440\\u0430\\u043d\\u0451\\u043d" in js
         assert "slice(-8)" in js
 
     def test_no_full_thumbprint_in_status(self, client):
@@ -136,6 +136,136 @@ class TestSettingsJS:
     def test_array_isarray_check(self, client):
         js = client.get("/static/chestny/settings.js").data.decode()
         assert "Array.isArray" in js
+
+    def test_js_has_import_preview_endpoint(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "/api/imports/preview" in js
+
+    def test_js_uses_xmlhttprequest_for_upload(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "XMLHttpRequest" in js
+        assert "FormData" in js
+
+    def test_js_uses_delete_for_cancel(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "DELETE" in js
+        assert "cancelImport" in js
+
+    def test_js_has_cert_ok_flag(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "certOk" in js
+        assert "updateGate" in js
+
+    def test_js_has_active_import_state(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "activeImport" in js
+
+    def test_js_uses_confirm_for_active_import(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "confirmIfActiveImport" in js
+        assert "confirm(" in js
+
+    def test_js_cancel_clears_file_input(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "fileInput.value" in js and '""' in js
+
+    def test_js_no_storage(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        for term in ("localStorage", "sessionStorage", "document.cookie"):
+            assert term not in js
+
+    def test_js_uses_textcontent_for_dryrun(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "showDryRun" in js
+        assert "createElement" in js
+        assert "textContent" in js
+
+    def test_js_resets_certok_on_save(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        # certOk = false встречается в onSave, onCheckCert, onRefreshCerts, onTabClick
+        assert "certOk = false" in js
+        assert "updateGate" in js
+
+    def test_js_confirm_on_tab_switch(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "cancelActiveImport" in js
+        assert "onTabClick" in js
+        assert "confirmIfActiveImport" in js
+
+
+class TestDryRunJS:
+    """Тесты dry-run JS-логики."""
+
+    def test_upload_btn_wired(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="upload-btn"' in html
+        assert 'id="file-input"' in html
+
+    def test_cancel_btn_wired(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="cancel-import-btn"' in html
+
+    def test_submit_cz_btn_disabled(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="submit-cz-btn"' in html
+        assert "disabled" in html
+
+    def test_dryrun_results_ids(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="dryrun-summary"' in html
+        assert 'id="dryrun-tables"' in html
+
+    def test_no_innerhtml_in_markup(self, client):
+        html = client.get("/").data.decode()
+        assert "innerHTML" not in html
+
+    def test_no_storage_in_markup(self, client):
+        html = client.get("/").data.decode()
+        for term in ("localStorage", "sessionStorage", "document.cookie"):
+            assert term not in html
+
+    def test_multipart_contract_preview(self, client):
+        """POST /api/imports/preview multipart: profile_id + file."""
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "FormData" in js
+        assert "profile_id" in js
+        assert "append" in js
+
+    def test_upload_uses_xhr_post(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert '"POST"' in js or "'POST'" in js
+        assert "/api/imports/preview" in js
+
+    def test_cancel_uses_xhr_delete(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert '"DELETE"' in js or "'DELETE'" in js
+        assert "/api/imports/" in js
+
+    def test_cancel_resets_active_import(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "activeImport = null" in js
+
+    def test_dryrun_uses_apifields(self, client):
+        """dry-run использует import_token, profile.display_name, summary.*, accepted, excluded."""
+        js = client.get("/static/chestny/settings.js").data.decode()
+        for field in ("import_token", "profile.display_name",
+                      "accepted", "excluded", "reason_code", "message"):
+            assert field in js
+        assert "summary" in js
+        assert "total_rows" in js
+        assert "profile_id" in js
+
+    def test_no_crypto_tail_in_dryrun(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "crypt" not in js.lower()
+        assert "digest" not in js.lower()
+        assert "hmac" not in js.lower()
+
+    def test_gate_clears_on_cert_change(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "cert.addEventListener" in js or "els.cert.addEventListener" in js
+        assert "certOk = false" in js
+        assert "updateGate" in js
 
 
 class TestSettingsJSIntegration:

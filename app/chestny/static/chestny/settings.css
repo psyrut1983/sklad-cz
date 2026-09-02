@@ -22,6 +22,21 @@ h2{font-size:1.125rem;margin-bottom:0.75rem;color:#222}
 .status-area{background:#e6ffe6;color:#1a6b1a;border:1px solid #b3e6b3}
 .error-area{background:#ffe6e6;color:#991a1a;border:1px solid #e6b3b3}
 .notice{margin-top:1.25rem;padding:0.75rem;background:#fffbe6;border:1px solid #e6d9a3;border-radius:6px;font-size:0.8125rem;color:#665500}
-.disabled-section{margin-top:2rem;padding:1rem;border:1px dashed #ccc;border-radius:6px;opacity:0.6}
-.disabled-note{font-size:0.875rem;color:#888;margin-bottom:0.5rem}
-@media(max-width:480px){.actions{flex-direction:column}.profile-tabs{flex-direction:column}}
+.upload-section{margin-top:2rem;padding:1rem;border:1px solid #ccc;border-radius:6px}
+.upload-section.disabled{opacity:0.6;border-style:dashed}
+.gate-note{font-size:0.875rem;color:#888;margin-bottom:0.5rem}
+.upload-controls{display:flex;gap:0.625rem;align-items:center;flex-wrap:wrap}
+.upload-controls input[type=file]{padding:0.375rem 0;font-size:0.9375rem}
+.upload-busy{margin-top:0.5rem;padding:0.5rem 0.75rem;background:#f0f5ff;border-radius:4px;font-size:0.875rem;color:#333}
+.spinner{display:inline-block;width:1rem;height:1rem;border:2px solid #ccc;border-top-color:#0066cc;border-radius:50%;animation:spin 0.6s linear infinite;vertical-align:middle;margin-right:0.375rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+.upload-error{margin-top:0.5rem;padding:0.5rem 0.75rem;background:#ffe6e6;color:#991a1a;border:1px solid #e6b3b3;border-radius:4px;font-size:0.875rem;display:none}
+.dryrun-results{margin-top:1rem}
+.dryrun-summary-inner{padding:0.625rem 0.75rem;background:#e6ffe6;border:1px solid #b3e6b3;border-radius:4px;font-size:0.9375rem;font-weight:500;color:#1a6b1a}
+.dryrun-results h3{font-size:1rem;margin-top:0.75rem;margin-bottom:0.5rem;color:#333}
+.dryrun-table{width:100%;border-collapse:collapse;font-size:0.8125rem;margin-bottom:0.75rem}
+.dryrun-table th,.dryrun-table td{border:1px solid #ddd;padding:0.375rem 0.5rem;text-align:left}
+.dryrun-table th{background:#f0f0f0;font-weight:600}
+.dryrun-table td{font-family:monospace;word-break:break-all}
+.dryrun-actions{display:flex;gap:0.625rem;margin-top:0.75rem;flex-wrap:wrap}
+@media(max-width:480px){.actions{flex-direction:column}.profile-tabs{flex-direction:column}.upload-controls{flex-direction:column;align-items:stretch}}

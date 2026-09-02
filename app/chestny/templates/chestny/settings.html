@@ -53,10 +53,31 @@
     <p>Приложение не запрашивает и не хранит PIN и закрытые ключи сертификатов. Подпись выполняется через установленное криптопровайдерное ПО.</p>
   </div>
 
-  <section aria-labelledby="upload-heading" class="disabled-section">
+  <section aria-labelledby="upload-heading" id="upload-section" class="upload-section">
     <h2 id="upload-heading">Загрузка Excel</h2>
-    <p class="disabled-note">Доступно после настройки профиля и проверки сертификата.</p>
-    <button type="button" class="btn" disabled>Выберите файл</button>
+    <p class="gate-note" id="gate-note">Доступно после настройки профиля и проверки сертификата.</p>
+
+    <div class="upload-controls" id="upload-controls" style="display:none">
+      <input type="file" id="file-input" accept=".xlsx">
+      <button type="button" class="btn btn-primary" id="upload-btn">Проверить файл</button>
+    </div>
+
+    <div class="upload-busy" id="upload-busy" style="display:none">
+      <span class="spinner"></span> Проверка файла…
+    </div>
+
+    <div class="upload-error" id="upload-error" style="display:none"></div>
+
+    <div class="dryrun-results" id="dryrun-results" style="display:none">
+      <div class="dryrun-summary" id="dryrun-summary"></div>
+      <div class="dryrun-tables" id="dryrun-tables"></div>
+      <div class="dryrun-actions">
+        <button type="button" class="btn btn-secondary" id="cancel-import-btn">Отменить импорт</button>
+        <button type="button" class="btn" id="submit-cz-btn" disabled>
+          Отправка в Честный Знак (будет доступна позже)
+        </button>
+      </div>
+    </div>
   </section>
 </div>
 </body>
