@@ -8,6 +8,7 @@ chestny.factory — Flask app factory для Честного Знака.
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +22,7 @@ def create_cz_app(
     instance_path: Optional[str] = None,
     db_uri: Optional[str] = None,
     testing: bool = False,
+    secret_key: Optional[str] = None,
 ) -> Flask:
     """
     Фабрика Flask-приложения для ЧЗ.
@@ -33,6 +35,9 @@ def create_cz_app(
         Полный SQLAlchemy URI. По умолчанию sqlite:///{instance_path}/cz.db.
     testing : bool
         Режим тестирования (отключает CSRF и пр.).
+    secret_key : str, optional
+        Явный SECRET_KEY для Flask. Если не передан — генерируется
+        через secrets.token_hex(32). Не хранится в репозитории.
 
     Возвращает
     ----------
@@ -52,7 +57,7 @@ def create_cz_app(
 
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.secret_key = "cz-secret-do-not-use-in-production"
+    app.secret_key = secret_key if secret_key is not None else secrets.token_hex(32)
 
     db.init_app(app)
 

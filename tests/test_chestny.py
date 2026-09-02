@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import os
+import secrets
 import tempfile
 from pathlib import Path
 
@@ -89,6 +90,46 @@ class TestFactory:
         assert "instance" not in app.config["SQLALCHEMY_DATABASE_URI"] or \
                "chestny/instance" in app.config["SQLALCHEMY_DATABASE_URI"] or \
                app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:////tmp/")
+
+    def test_no_static_secret(self):
+        """secret_key не является статической строкой."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        uri = f"sqlite:///{db_path}"
+        try:
+            app = create_cz_app(db_uri=uri, testing=True)
+            assert app.secret_key is not None
+            # Не должен содержать подсказок "do-not-use" или "secret"
+            assert "do-not-use" not in app.secret_key
+        finally:
+            os.unlink(db_path)
+
+    def test_two_calls_different_keys(self):
+        """Два вызова factory без аргумента secret_key получают разные ключи."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path1 = f.name
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path2 = f.name
+        uri1 = f"sqlite:///{db_path1}"
+        uri2 = f"sqlite:///{db_path2}"
+        try:
+            app1 = create_cz_app(db_uri=uri1, testing=True)
+            app2 = create_cz_app(db_uri=uri2, testing=True)
+            assert app1.secret_key != app2.secret_key
+        finally:
+            os.unlink(db_path1)
+            os.unlink(db_path2)
+
+    def test_explicit_secret_key(self):
+        """Явный secret_key из параметра используется."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        uri = f"sqlite:///{db_path}"
+        try:
+            app = create_cz_app(db_uri=uri, testing=True, secret_key="test-fixed-key-42")
+            assert app.secret_key == "test-fixed-key-42"
+        finally:
+            os.unlink(db_path)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -366,7 +407,7 @@ class TestRouteIsolation:
 
 
 class TestRunner:
-    """Проверка runner.py: host=127.0.0.1, port configurable, debug=False."""
+    """Проверка runner.py: host=127.0.0.1, port configurable, debug=False, use_reloader=False."""
 
     RUNNER_PATH = Path(__file__).parent.parent / "app" / "chestny" / "runner.py"
 
@@ -380,10 +421,21 @@ class TestRunner:
         src = self.RUNNER_PATH.read_text()
         assert "0.0.0.0" not in src
 
-    def test_runner_debug_false_by_default(self):
-        """debug=False по умолчанию (только через --debug)."""
+    def test_runner_debug_false(self):
+        """runner.py использует debug=False (не args.debug)."""
         src = self.RUNNER_PATH.read_text()
-        assert "debug=False" in src or "debug=args.debug" in src
+        assert "debug=False" in src
+        assert "args.debug" not in src
+
+    def test_runner_use_reloader_false(self):
+        """runner.py использует use_reloader=False."""
+        src = self.RUNNER_PATH.read_text()
+        assert "use_reloader=False" in src
+
+    def test_runner_no_debug_flag(self):
+        """runner.py не содержит --debug аргумента."""
+        src = self.RUNNER_PATH.read_text()
+        assert "--debug" not in src
 
     def test_runner_parses_port(self):
         """runner.py использует argparse для port."""
