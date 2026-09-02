@@ -70,7 +70,7 @@ def main():
 
     try:
         # Импортируем приложение (после мока)
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
         # Создаём приложение через test environment
         os.environ["FLASK_ENV"] = "testing"
