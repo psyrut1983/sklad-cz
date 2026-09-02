@@ -9,7 +9,6 @@
 
 import os
 import pytest
-from unittest.mock import patch
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  Импорт генератора (openpyxl опционален)
@@ -124,19 +123,23 @@ class TestSyntheticXlsxGenerator:
         assert "int" in costs or "float" in costs
 
     def test_kiz_variants(self, tmp_path):
-        """Содержит чистый КИ-31, GS, WB, повреждённый и дубль."""
+        """Содержит чистый КИ-31, FFFD, GS, повреждённый и дубль."""
         import openpyxl
 
         path = create_synthetic_xlsx(os.path.join(tmp_path, "kiz.xlsx"))
         wb = openpyxl.load_workbook(path)
         ws = wb["КИЗ"]
-        kiz_values = set()
+        kiz_values = list()
         for row in ws.iter_rows(min_row=2, values_only=True):
-            kiz_values.add(str(row[2]))
+            kiz_values.append(str(row[2]))
 
         assert KI_CLEAN in kiz_values, "Нет чистого КИ-31"
+        assert KI_WITH_FFFD in kiz_values, "Нет КИ с U+FFFD"
+        assert KI_WITH_GS_TEXT in kiz_values, "Нет КИ с GS"
         assert KI_CORRUPTED in kiz_values, "Нет повреждённого КИ"
         assert KI_DUP in kiz_values, "Нет дублирующегося КИ"
+        # 5 уникальных raw-строк (KI_CLEAN встречается в 6 строках)
+        assert len(set(kiz_values)) == 5
 
     def test_deterministic(self, tmp_path):
         """Два вызова дают одинаковую логическую структуру (не ZIP-байты).
@@ -169,6 +172,9 @@ class TestSyntheticXlsxGenerator:
         assert stats["dash_rows"] == 1
         assert stats["empty_check"] == 1
         assert stats["empty_fn"] == 1
+        assert stats["corrupted_kiz"] == 1
+        assert stats["duplicate"] == 1
+        assert stats["valid_sales"] == 4
 
     def test_no_real_xlsx_read(self):
         """Тест не читает реальный XLSX (проверка на уровне теста)."""

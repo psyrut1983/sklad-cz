@@ -8,7 +8,7 @@
 - Продажа, Возврат, -
 - Пустые чек/ФН
 - Целая и дробная стоимость
-- Чистый КИ-31, GS-разделитель, WB U+FFFD, повреждённый, дубликат
+- 3 разных валидных КИ-31 (чистый, FFFD-хвост, GS-текст), повреждённый, дубликат
 - Все строки без реальных данных ЧЗ
 """
 
@@ -19,7 +19,6 @@ from typing import Any
 try:
     import openpyxl
     from openpyxl import Workbook
-    from openpyxl.utils import get_column_letter
 except ImportError:
     openpyxl = None  # type: ignore[assignment]
     Workbook = None  # type: ignore[assignment]
@@ -39,13 +38,15 @@ HEADERS = [
     "Признак продажи юрлицу",
 ]
 
-# Валидный КИ-31
+# Валидные КИ-31 (разные — чтобы строки 1/2/3 не были дублями)
 KI_CLEAN = "010123456789012321SERIAL1234567"
+KI_CLEAN2 = "010123456789099921GOODS9876543X"
+KI_CLEAN3 = "010123456789011121PRODCT5555555"
 
 # КИ + U+FFFD + 91(4) + U+FFFD + 92(44) — WB-вариант (openpyxl не принимает \u001d)
 FFFD_CHAR = "\ufffd"
 KI_WITH_FFFD = (
-    KI_CLEAN
+    KI_CLEAN2
     + FFFD_CHAR
     + "91abcd"
     + FFFD_CHAR
@@ -55,7 +56,7 @@ KI_WITH_FFFD = (
 
 # КИ + GS (текстовый литерал) + 91(4) + GS + 92(44) — для тестов текстового GS
 KI_WITH_GS_TEXT = (
-    KI_CLEAN
+    KI_CLEAN3
     + "GS"
     + "91abcd"
     + "GS"
