@@ -37,7 +37,8 @@ def main():
 
         # 3) Route isolation
         with app.test_client() as client:
-            for path in ["/", "/api/warehouses", "/api/skus"]:
+            assert client.get("/").status_code == 200
+            for path in ["/api/warehouses", "/api/skus"]:
                 resp = client.get(path)
                 assert resp.status_code == 404, f"{path} должен быть 404"
             print("[3/4] Старые маршруты не зарегистрированы: OK")

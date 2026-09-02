@@ -391,7 +391,7 @@ class TestHealth:
 class TestRouteIsolation:
     """Новое приложение НЕ содержит старых складских маршрутов."""
 
-    OLD_PATHS = ["/", "/api/warehouses", "/api/skus", "/api/units",
+    OLD_PATHS = ["/api/warehouses", "/api/skus", "/api/units",
                  "/api/labels", "/api/tnved", "/api/settings", "/dashboard"]
 
     def test_no_old_routes(self, client):

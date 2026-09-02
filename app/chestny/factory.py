@@ -12,7 +12,7 @@ import secrets
 from pathlib import Path
 from typing import Optional
 
-from flask import Flask
+from flask import Flask, render_template
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
@@ -48,7 +48,15 @@ def create_cz_app(
 
     Path(instance_path).mkdir(parents=True, exist_ok=True)
 
-    app = Flask(__name__, instance_path=instance_path, instance_relative_config=False)
+    _chestny_dir = Path(__file__).parent
+    app = Flask(
+        __name__,
+        instance_path=instance_path,
+        instance_relative_config=False,
+        template_folder=str(_chestny_dir / "templates"),
+        static_folder=str(_chestny_dir / "static"),
+        static_url_path="/static",
+    )
     app.config["TESTING"] = testing
 
     if db_uri is None:
@@ -76,6 +84,11 @@ def create_cz_app(
     @app.route("/health")
     def health():
         return {"status": "ok", "app": "chestny-znak"}
+
+    # ── UI ────────────────────────────────────────────────────────────────
+    @app.route("/")
+    def index():
+        return render_template("chestny/settings.html")
 
     return app
 
