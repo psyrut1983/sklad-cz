@@ -90,6 +90,9 @@ def create_cz_app(
     from app.chestny.services.packaging import PackageStore
     app.extensions["package_store"] = PackageStore()
 
+    # ── Cleanup orphaned data on startup ─────────────────────────────────────
+    _cleanup_on_startup(app)
+
     @app.errorhandler(413)
     def _json_413(e):
         return jsonify({"code": "file_too_large", "message": "Файл превышает 10 MiB"}), 413
@@ -97,6 +100,10 @@ def create_cz_app(
     # ── Import blueprint ───────────────────────────────────────────────────
     from app.chestny.import_routes import cz_import_api
     app.register_blueprint(cz_import_api)
+
+    # ── Report blueprint ────────────────────────────────────────────────────
+    from app.chestny.report_routes import cz_report
+    app.register_blueprint(cz_report)
 
     # ── Health endpoint ───────────────────────────────────────────────────
     @app.route("/health")
@@ -145,3 +152,32 @@ def _seed_profiles() -> None:
             db.session.add(profile)
 
     db.session.commit()
+
+
+def _cleanup_on_startup(app: Flask) -> None:
+    """Очистка осиротевших временных данных при старте."""
+    # Cleanup expired active imports
+    imports_store = app.extensions.get("active_imports")
+    if imports_store is not None:
+        imports_store.cleanup_expired()
+
+    # Cleanup orphaned packages
+    pkg_store = app.extensions.get("package_store")
+    if pkg_store is not None:
+        valid_tokens = set()
+        if imports_store is not None:
+            for tok in list(imports_store._imports.keys()):
+                valid_tokens.add(tok)
+        for pkg in list(pkg_store._packages.values()):
+            if pkg.import_token not in valid_tokens:
+                pkg_store._packages.pop(pkg.id, None)
+
+    # Cleanup temp XLSX files in instance
+    inst = app.instance_path
+    if os.path.isdir(inst):
+        for fname in os.listdir(inst):
+            if fname.endswith(".xlsx"):
+                try:
+                    os.unlink(os.path.join(inst, fname))
+                except OSError:
+                    pass

@@ -581,4 +581,53 @@ if (document.readyState === "loading") {
   init();
 }
 
+// ── Report section ──────────────────────────────────────────────────────────
+
+var reportGen = 0;
+
+function loadReport() {
+  var myGen = ++reportGen;
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", "/api/packages/" + encodeURIComponent(profileId), true);
+
+  xhr.onload = function() {
+    if (myGen !== reportGen) return;
+    if (xhr.status !== 200) return;
+
+    var packages = JSON.parse(xhr.responseText);
+    var section = document.getElementById("report-section");
+    var summary = document.getElementById("report-summary");
+    var btn = document.getElementById("show-report-btn");
+
+    if (!section || !summary) return;
+
+    var hasResults = false;
+    var text = "";
+    for (var i = 0; i < packages.length; i++) {
+      var p = packages[i];
+      if (p.status === "CONFIRMED" || p.status === "PARTIAL" || p.status === "FAILED") {
+        hasResults = true;
+        text += p.status + ": " + p.summary.accepted_submitted + " / " + p.summary.accepted + "\n";
+      }
+    }
+
+    if (hasResults) {
+      section.style.display = "block";
+      summary.textContent = text;
+      if (btn) {
+        btn.onclick = function() {
+          window.open("/api/packages/" + encodeURIComponent(profileId), "_blank");
+        };
+      }
+    } else {
+      section.style.display = "none";
+    }
+  };
+
+  xhr.send();
+}
+
+// Hook into profile switch to reload report
+document.addEventListener("profile-switched", loadReport);
+
 })();
