@@ -113,6 +113,11 @@ class TokenParseError(CzAuthError):
     pass
 
 
+class UnauthorizedError(CzAuthError):
+    """401 — токен недействителен."""
+    pass
+
+
 class RateLimitError(CzAuthError):
     """429 Too Many Requests."""
     pass
@@ -216,7 +221,7 @@ class RequestsTransport(HttpTransport):
                 raise AccessDeniedError("Доступ запрещён")
             raise AccessDeniedError("Доступ запрещён")
         if r.status_code == 401:
-            raise AccessDeniedError("Токен недействителен")
+            raise UnauthorizedError("Токен недействителен")
         r.raise_for_status()
         try:
             return r.json()

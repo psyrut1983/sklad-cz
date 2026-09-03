@@ -26,6 +26,7 @@ from app.chestny.services.cz_auth import (
     TimeoutError,
     NetworkError,
     SigningError,
+    UnauthorizedError,
     PRODUCTION_API_BASE_URL,
 )
 
@@ -82,8 +83,10 @@ def _status_error(status: int) -> Exception:
         return RateLimitError("Превышен лимит запросов к ЧЗ")
     if status >= 500:
         return ServerError("Ошибка сервера ЧЗ")
-    if status in (401, 403):
+    if status == 403:
         return AccessDeniedError("Доступ запрещён")
+    if status == 401:
+        return UnauthorizedError("Токен недействителен")
     return RuntimeError(f"Unexpected status {status}")
 
 
@@ -402,7 +405,7 @@ class TestHttpErrors:
         transport.signin_status = 401
         client = make_client(transport=transport)
 
-        with pytest.raises(AccessDeniedError):
+        with pytest.raises(UnauthorizedError):
             client.get_token()
 
     def test_403_forbidden(self) -> None:
