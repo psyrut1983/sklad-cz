@@ -16,7 +16,7 @@
 | **Метод** | `POST` | `cz_api.py:728` |
 | **URL** | `<base_url>/lk/documents/create` | `cz_api.py:728` |
 | **Query** | `?pg=<product_group_code>` | `cz_api.py:732` |
-| **Base URL (prod)** | `https://markirovka.crpt.ru/api/v3/true-api` | `cz_api.py:134` + `app/config.py` |
+| **Base URL (prod)** | `https://markirovka.crpt.ru/api/v3/true-api` | `app/cz_api.py` + профиль/переменные окружения |
 | **Base URL (sandbox)** | `https://markirovka.sandbox.crptech.ru/api/v3/true-api` | `docs/15-api-chestny-znak.md` |
 | **Content-Type** | `application/json` | `cz_api.py:729` |
 | **Authorization** | `Bearer <token>` | `cz_api.py:730` |
@@ -342,12 +342,11 @@ API может вернуть plain-text UUID (не JSON) при статуса�
 | `https://честныйзнак.рф/...` | 403 (DDoS-Guard) | Geo-block |
 | `https://markirovka.sandbox.crptech.ru/...` | 401 | Песочница (требует токен) |
 | `docs/15-api-chestny-znak.md` | локальный файл | Auth flow, endpoints (составлено по коду) |
-| `docs/12-vyvod-iz-oborota.md` | локальный файл | Описание процесса вывода |
-| `app/cz_api.py` | локальный файл | **Основной источник** — рабочий код, протестированный с реальным API |
-| `app/routes/import_export.py` | локальный файл | Извлечение document_id, проверка статуса |
-| `app/utils.py` | локальный файл | Маппинг product_group → pg code |
-| `tests/test_cz_api_documents.py` | локальный файл | 40+ тестов, подтверждающих поведение |
-| `tests/test_import_export_route_characterization.py` | локальный файл | 5 тестов, характеризующих маршрут |
+| `docs/15-api-chestny-znak.md` | локальный файл | Auth flow, endpoints |
+| `app/cz_api.py` | локальный файл | Низкоуровневая авторизация, подпись, статусы |
+| `app/chestny/import_routes.py` | локальный файл | Извлечение document_id, проверка статуса |
+| `app/chestny/services/packaging.py` | локальный файл | Сборка и отправка `LK_RECEIPT` |
+| `tests/test_chestny_packaging.py` | локальный файл | Тесты payload и пакетирования |
 
 ---
 

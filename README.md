@@ -10,8 +10,9 @@
 
 ## Документация
 
-- [Вывод из оборота (через API)](docs/12-vyvod-iz-oborota-api.md)
+- [Документация проекта](docs/README.md)
 - [API Честный Знак — техническое описание](docs/15-api-chestny-znak.md)
+- [Контракт LK_RECEIPT](docs/LK_RECEIPT_CONTRACT.md)
 
 ## Требования
 
@@ -46,8 +47,8 @@ sudo apt install python3-dev gcc
 Если на компьютере установлен только Python 3.14, скрипт попросит поставить
 Python 3.12: Windows-зависимости проекта могут ещё не поддерживать 3.14.
 
-Также можно запустить `start.bat` или `setup.bat` — они ведут к тому же
-результату (перенаправляют на start_chestny.bat).
+`start_chestny.bat` — единственная Windows-точка входа. Старые `start.bat`,
+`setup.bat`, `run.py` и складские скрипты удалены, чтобы не было путаницы.
 
 Если нужен другой порт:
 
@@ -103,8 +104,9 @@ sklad-cz/
 │   └── services/                # Общие сервисы
 │       ├── excel_import.py      # Разбор XLSX Wildberries
 │       └── kiz_codec.py         # Извлечение КИ-31, удаление криптохвоста
+├── start_chestny.bat            # Единственная Windows-точка входа
 ├── requirements.txt             # Python-зависимости
-├── run.py                       # Старая точка входа (не используется)
+├── docs/                        # Только документация текущего контура ЧЗ
 └── README.md                    # Этот файл
 ```
 

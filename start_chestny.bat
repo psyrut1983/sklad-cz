@@ -77,14 +77,31 @@ if not exist "%VENV%\Scripts\python.exe" (
     echo.
     echo   Creating virtual environment...
     echo Creating venv... >>"%LOG%"
-    %PYTHON% -m venv "%VENV%" >>"%LOG%" 2>&1
+    if exist "%VENV%" (
+        echo Removing incomplete venv folder... >>"%LOG%"
+        rmdir /s /q "%VENV%" >>"%LOG%" 2>&1
+    )
+    echo CMD: %PYTHON% -m venv "%VENV%" >>"%LOG%"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/c','%PYTHON% -m venv ""%VENV%"" >> ""%LOG%"" 2>&1' -PassThru -WindowStyle Hidden; if (-not $p.WaitForExit(180000)) { Add-Content -Path '%LOG%' -Value '[ERROR] venv creation timeout after 180 seconds'; $p.Kill(); exit 124 }; exit $p.ExitCode"
     if errorlevel 1 (
         echo   [!] Failed to create venv.
+        echo   Delete folder: %VENV%
+        echo   Then run start_chestny.bat again.
         echo.
         echo Venv creation failed >>"%LOG%"
         pause
         exit /b 1
     )
+    if not exist "%PY_VENV%" (
+        echo   [!] Venv was created, but python.exe is missing.
+        echo   Delete folder: %VENV%
+        echo   Then run start_chestny.bat again.
+        echo.
+        echo Venv python.exe missing after creation >>"%LOG%"
+        pause
+        exit /b 1
+    )
+    echo Venv created successfully >>"%LOG%"
     del "%MARKER%" 2>nul
 )
 

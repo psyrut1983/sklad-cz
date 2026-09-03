@@ -172,10 +172,10 @@
 ### Полезный контур
 
 - `app/cz_api.py`: challenge, CAdES-BES, Windows `win32com`, Linux `pycades`, токен, статусы, `LK_RECEIPT`.
-- `app/routes/import_export.py`: отправка, извлечение `document_id`, первичная проверка статуса.
-- `app/utils.py`: карта `1 → lp → Лёгкая промышленность`, настройки и функции КИЗ.
-- `app/routes/settings.py`: поля ЧЗ и сертификата.
-- `templates/index.html`, `static/js/app.js`: примеры предпросмотра, подтверждения и результата.
+- `app/chestny/import_routes.py`: импорт XLSX, dry-run, отправка, извлечение `document_id`.
+- `app/services/kiz_codec.py`: извлечение КИ-31 без криптохвоста.
+- `app/chestny/routes.py`: профили, настройки и диагностика сертификата.
+- `app/chestny/templates/chestny/settings.html`, `app/chestny/static/chestny/settings.js`: текущий UI.
 
 ### Фактический `LK_RECEIPT`
 
@@ -264,9 +264,9 @@
 | `app/config.py` | сократить |
 | `app/routes/import_export.py` | взять обработку ответов; маршрут переписать |
 | `app/routes/settings.py` | взять поля ЧЗ; SSH/backup удалить |
-| `templates/index.html`, `static/js/app.js` | взять UX-паттерны; заменить минимальным UI |
-| `docs/12-vyvod-iz-oborota.md`, `docs/15-api-chestny-znak.md` | справочный материал; затем переписать |
-| `run.py`, `setup.bat`, `start.bat` | заменить Windows-версиями |
+| `templates/index.html`, `static/js/app.js` | заменены минимальным UI в `app/chestny/templates` и `app/chestny/static` |
+| `docs/15-api-chestny-znak.md`, `docs/LK_RECEIPT_CONTRACT.md` | оставить как справочный материал текущего контура |
+| `start_chestny.bat` | единственная Windows-точка входа |
 | `requirements.txt` | пересобрать минимально |
 | `README.md`, `VERSION` | обновить |
 
@@ -279,26 +279,23 @@
 - старые UI-файлы, пока новый UI не проходит полный путь;
 - Windows-скрипты, пока новый запуск не проверен.
 
-### Удалить после замены и тестов
+### Удалено после замены и тестов
 
-- `app/routes/dashboard.py`, `labels.py`, `skus.py`, `tnved.py`, `units.py`, `warehouses.py`;
-- `app/tnved.py`;
-- старые `Warehouse`, `SKU`, `Unit`;
-- `sync.py`;
-- `bump_version.py`, если не используется новой схемой;
-- `setup.sh`, `run.sh`, `sklad.service`;
-- старые складские секции UI;
-- `docs/01`–`11`, `13`, `14`, `16`;
-- `Pillow`, `treepoem`, `paramiko`, `reportlab`, `pdfplumber` после удаления импортов;
-- лишние CORS и складские миграции.
+- старые `Warehouse`, `SKU`, `Unit`, складские маршруты и UI;
+- `run.py`, `run.sh`, `setup.sh`, `sync.py`, `sklad.service`;
+- `start.bat`, `setup.bat`, чтобы осталась одна Windows-точка входа;
+- `templates/index.html`, `static/js/app.js`;
+- `docs/01`-`14`, `16`;
+- `bump_version.py`;
+- `Pillow`, `treepoem`, `paramiko`, `reportlab`, `pdfplumber` не входят в текущий `requirements.txt`.
 
 ## 8. Технические ворота
 
 Их выполняет Кузя по коду, тестам и официальным источникам:
 
-1. Проверить Windows 10 + Python 3.14.7 + `pywin32` + CryptoPro COM.
-   - `pycades` относится к Linux и не является причиной заранее менять Windows-Python.
-   - При несовместимости предложить Коле поддерживаемую версию, не менять молча.
+1. Проверить Windows 10/11 + Python 3.12 + `pywin32` + CryptoPro COM.
+   - `pycades` относится к Linux.
+   - Python 3.14 не использовать для Windows-запуска: зависимости проекта и `pywin32` могут быть несовместимы.
 2. Сверить официальную схему `LK_RECEIPT`: поля, `action`, `cis`, цена, дата, чек, ФН, FIAS, лимит и rate limits.
 3. Подтвердить контракт API: в `products[].cis` передаётся очищенный КИ-31; правило длины и состава уже подтверждено официальным материалом ЧЗ и образцом WB.
 4. Доказать правила группировки строк.
@@ -399,8 +396,8 @@
 ### Этап 7. Удаление старого склада
 
 - [x] Переключить приложение на новые модели и маршруты.
-- [ ] Удалить старые blueprints и модели.
-- [ ] Удалить этикетки, ТН ВЭД, SSH-sync и старые docs.
+- [x] Удалить старые blueprints и модели.
+- [x] Удалить этикетки, ТН ВЭД, SSH-sync и старые docs.
 - [x] Пересобрать requirements, README и Windows-скрипты.
 - [x] Проверить отсутствие мёртвых импортов и маршрутов.
 
