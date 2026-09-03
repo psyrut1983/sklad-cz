@@ -86,6 +86,10 @@ def create_cz_app(
     app.extensions["active_imports"] = ActiveImportStore(5, 1800)
     app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MiB
 
+    # ── Package store ───────────────────────────────────────────────────────
+    from app.chestny.services.packaging import PackageStore
+    app.extensions["package_store"] = PackageStore()
+
     @app.errorhandler(413)
     def _json_413(e):
         return jsonify({"code": "file_too_large", "message": "Файл превышает 10 MiB"}), 413
