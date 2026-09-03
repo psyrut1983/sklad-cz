@@ -90,6 +90,8 @@ class ImportSummary:
     accepted: int = 0
     excluded: int = 0
     by_reason: dict[str, int] = field(default_factory=dict)
+    accepted_submitted: int = 0
+    accepted_failed: int = 0
 
 
 @dataclass(frozen=True)

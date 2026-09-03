@@ -8,6 +8,7 @@ packaging — новый builder для LK_RECEIPT.
 from __future__ import annotations
 
 import base64
+import dataclasses
 import json
 import threading
 import uuid
@@ -28,9 +29,13 @@ Signer = Callable[[str, str], str]
 # ── Статусы пакета ──────────────────────────────────────────────────────────
 
 PENDING = "PENDING"
+SUBMITTING = "SUBMITTING"
 CONFIRMED = "CONFIRMED"
+PARTIAL = "PARTIAL"
 FAILED = "FAILED"
 UNKNOWN = "UNKNOWN"
+
+BATCH_SIZE = 100
 
 # ── Data-классы ─────────────────────────────────────────────────────────────
 
@@ -48,6 +53,25 @@ class PackageItem:
 
 
 @dataclass
+class BatchItem:
+    """Один батч (подмножество items) внутри пакета."""
+    index: int
+    items: list[PackageItem]
+    status: str = PENDING
+    document_id: str | None = None
+    error: str | None = None
+
+
+@dataclass
+class BatchResult:
+    """Результат отправки одного батча."""
+    index: int
+    success: bool
+    document_id: str | None = None
+    error: str | None = None
+
+
+@dataclass
 class Package:
     """Пакет документов для отправки в ЧЗ."""
     id: str
@@ -59,6 +83,7 @@ class Package:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     processing: bool = False
+    batches: list[BatchItem] = field(default_factory=list)
 
     def __repr__(self) -> str:
         return (
@@ -109,7 +134,11 @@ class PackageBuilder:
         document_date: str,
         primary_document_custom_name: str = "",
     ) -> Package:
-        """Создаёт пакет из активного импорта и отправляет в ЧЗ."""
+        """Создаёт пакет из активного импорта и отправляет в ЧЗ.
+
+        Разбивает items на батчи по {BATCH_SIZE} КИЗ.
+        Каждый батч отправляется отдельным POST /doc/create.
+        """
         # ── Валидация ────────────────────────────────────────────────────
         if active_import.expires_at is not None and active_import.expires_at < datetime.now(timezone.utc):
             raise PackageBuilderError("Срок действия импорта истёк")
@@ -131,8 +160,87 @@ class PackageBuilder:
                 date=row.date,
             ))
 
-        # ── Формирование JSON ───────────────────────────────────────────
-        inner = self._build_inner_json(items, profile_settings, action_date, document_number, document_date, primary_document_custom_name)
+        # ── Разбивка на батчи ───────────────────────────────────────────
+        batch_list: list[BatchItem] = []
+        for i in range(0, len(items), BATCH_SIZE):
+            chunk = items[i:i + BATCH_SIZE]
+            batch_list.append(BatchItem(index=len(batch_list), items=chunk))
+
+        # ── Создание пакета ─────────────────────────────────────────────
+        summary = dataclasses.replace(active_import.summary, accepted_submitted=0, accepted_failed=0)
+
+        pkg = Package(
+            id=str(uuid.uuid4()),
+            profile_id=profile_id,
+            import_token=active_import.token,
+            status=SUBMITTING,
+            summary=summary,
+            batches=batch_list,
+        )
+
+        # ── Отправка батчей ─────────────────────────────────────────────
+        first_document_id: str | None = None
+        submitted_count = 0
+        failed_count = 0
+
+        for batch in pkg.batches:
+            result = self._send_batch(
+                batch.index,
+                batch.items,
+                profile_settings,
+                action_date,
+                document_number,
+                document_date,
+                primary_document_custom_name,
+            )
+            if result.success:
+                batch.status = CONFIRMED
+                batch.document_id = result.document_id
+                submitted_count += len(batch.items)
+                if first_document_id is None:
+                    first_document_id = result.document_id
+            else:
+                batch.status = FAILED
+                batch.error = result.error
+                failed_count += len(batch.items)
+
+        # ── Итоговый статус ─────────────────────────────────────────────
+        if submitted_count > 0 and failed_count == 0:
+            pkg.status = CONFIRMED
+        elif submitted_count > 0 and failed_count > 0:
+            pkg.status = PARTIAL
+        else:
+            pkg.status = FAILED
+
+        pkg.document_id = first_document_id
+        pkg.summary = dataclasses.replace(
+            pkg.summary,
+            accepted_submitted=submitted_count,
+            accepted_failed=failed_count,
+        )
+        pkg.updated_at = datetime.now(timezone.utc)
+        return pkg
+
+    def _send_batch(
+        self,
+        batch_index: int,
+        batch_items: list[PackageItem],
+        profile_settings: dict[str, Any],
+        action_date: str,
+        document_number: str,
+        document_date: str,
+        primary_document_custom_name: str,
+    ) -> BatchResult:
+        """Отправляет один батч в ЧЗ.
+
+        401 → reset token + повтор ровно один раз.
+        403/429/5xx → ошибка без повтора.
+        """
+        inner = self._build_inner_json(
+            batch_items, profile_settings,
+            action_date, document_number, document_date,
+            primary_document_custom_name,
+        )
         inner_json = json.dumps(inner, ensure_ascii=False, separators=(",", ":"))
         product_document = base64.b64encode(inner_json.encode("utf-8")).decode("ascii")
 
@@ -143,41 +251,39 @@ class PackageBuilder:
             "signature": self._signer(inner_json, profile_settings.get("certificate_thumbprint", "")),
         }
 
-        # ── Отправка ────────────────────────────────────────────────────
-        token = self._auth.get_token()
         url = f"{profile_settings['api_base_url']}/lk/documents/create?pg=lp"
 
-        resp = self._transport("POST", url, headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }, json=outer, timeout=60)
-
-        # ── Обработка 401 ───────────────────────────────────────────────
-        if resp.status_code == 401:
-            self._auth.reset_token()
+        def _do_request() -> Any:
             token = self._auth.get_token()
-            resp = self._transport("POST", url, headers={
+            return self._transport("POST", url, headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
             }, json=outer, timeout=60)
 
-        if resp.status_code not in (200, 201):
-            raise PackageCreateError("Не удалось создать документ")
+        resp = _do_request()
 
-        # ── Извлечение document_id ──────────────────────────────────────
+        # 401 → reset token + повтор
+        if resp.status_code == 401:
+            self._auth.reset_token()
+            resp = _do_request()
+
+        # 429 — rate limit, не повторяем
+        if resp.status_code == 429:
+            return BatchResult(index=batch_index, success=False, error="Rate limited (429)")
+
+        # 403/5xx — не повторяем
+        if resp.status_code in (403,) or (500 <= resp.status_code < 600):
+            return BatchResult(index=batch_index, success=False, error=f"HTTP {resp.status_code}")
+
+        # Остальные ошибки
+        if resp.status_code not in (200, 201):
+            return BatchResult(index=batch_index, success=False, error=f"HTTP {resp.status_code}")
+
         document_id = self._extract_document_id(resp)
         if not document_id:
-            raise PackageCreateError("Не удалось извлечь document_id из ответа")
+            return BatchResult(index=batch_index, success=False, error="No document_id in response")
 
-        pkg = Package(
-            id=str(uuid.uuid4()),
-            profile_id=profile_id,
-            import_token=active_import.token,
-            document_id=document_id,
-            status=CONFIRMED,
-            summary=active_import.summary,
-        )
-        return pkg
+        return BatchResult(index=batch_index, success=True, document_id=document_id)
 
     # ── Приватные методы ──────────────────────────────────────────────────
 

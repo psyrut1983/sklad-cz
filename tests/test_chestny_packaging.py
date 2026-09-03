@@ -14,10 +14,15 @@ from typing import Any
 import pytest
 
 from app.chestny.services.packaging import (
+    BATCH_SIZE,
     CONFIRMED,
     FAILED,
+    PARTIAL,
     PENDING,
+    SUBMITTING,
     UNKNOWN,
+    BatchItem,
+    BatchResult,
     Package,
     PackageBuilder,
     PackageBuilderError,
@@ -289,28 +294,29 @@ class TestCreatePackage:
         assert call_count[0] == 2
 
     def test_401_retry_fails_twice(self, builder: PackageBuilder, transport: FakeTransport, auth_client: Any) -> None:
-        """401 → reset → повтор 401 → ошибка."""
+        """401 → reset → повтор 401 → FAILED (batch)."""
         transport.set_response(401, json_data={"error": "unauthorized"})
         imp = _make_import()
         settings = _make_settings()
-        with pytest.raises(PackageCreateError, match="создать документ"):
-            builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        pkg = builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        assert pkg.status == FAILED
+        assert pkg.document_id is None
 
     def test_403_no_retry(self, builder: PackageBuilder, transport: FakeTransport) -> None:
-        """403 → ошибка без повтора."""
+        """403 → FAILED без повтора."""
         transport.set_response(403, json_data={"error": "forbidden"})
         imp = _make_import()
         settings = _make_settings()
-        with pytest.raises(PackageCreateError):
-            builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        pkg = builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        assert pkg.status == FAILED
 
     def test_500_no_retry(self, builder: PackageBuilder, transport: FakeTransport) -> None:
-        """500 → ошибка без повтора."""
+        """500 → FAILED без повтора."""
         transport.set_response(500, json_data={"error": "server error"})
         imp = _make_import()
         settings = _make_settings()
-        with pytest.raises(PackageCreateError):
-            builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        pkg = builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        assert pkg.status == FAILED
 
     def test_signer_called(self, builder: PackageBuilder, transport: FakeTransport, signer: FakeSigner) -> None:
         transport.set_response(200, json_data={"documentId": "doc-uuid"})
@@ -381,3 +387,157 @@ class TestPackageStore:
         assert len(store) == 0
         store.save(Package(id="p1", profile_id="org-sinyavin", import_token="tok1"))
         assert len(store) == 1
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  Тесты пакетирования (Этап 5C)
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+def _make_many_import(accepted_count: int, profile_id: str = "org-sinyavin") -> ActiveImport:
+    """Создаёт активный импорт с указанным количеством принятых строк."""
+    accepted = [
+        AcceptedRow(
+            row_index=i,
+            ki=f"010123456789099921{i:013d}",
+            check_number=f"CHK{i:04d}",
+            fn_number=f"FN{i:04d}",
+            cost_kopecks=100,
+            date="2026-09-03",
+        )
+        for i in range(1, accepted_count + 1)
+    ]
+    summary = ImportSummary(
+        total_rows=accepted_count,
+        accepted=accepted_count,
+        excluded=0,
+        by_reason={},
+    )
+    return ActiveImport(
+        token="multi-batch-token",
+        profile_id=profile_id,
+        accepted=tuple(accepted),
+        excluded=(),
+        summary=summary,
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc).replace(hour=23, minute=59, second=59),
+    )
+
+
+class TestBatchPackaging:
+    """Тесты пакетирования по 100."""
+
+    def test_2_items_1_batch(self, builder: PackageBuilder, transport: FakeTransport) -> None:
+        """2 accepted → 1 batch."""
+        transport.set_response(200, json_data={"documentId": "doc-single-batch"})
+        imp = _make_many_import(accepted_count=2)
+        settings = _make_settings()
+        pkg = builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        assert pkg.status == CONFIRMED
+        assert len(pkg.batches) == 1
+        assert pkg.batches[0].status == CONFIRMED
+        assert pkg.batches[0].document_id == "doc-single-batch"
+        assert len(pkg.batches[0].items) == 2
+
+    def test_150_items_2_batches(self, builder: PackageBuilder, transport: FakeTransport) -> None:
+        """150 accepted → 2 batches (100 + 50)."""
+        transport.set_response(200, json_data={"documentId": "doc-batch-0"})
+        imp = _make_many_import(accepted_count=150)
+        settings = _make_settings()
+        pkg = builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        assert pkg.status == CONFIRMED
+        assert len(pkg.batches) == 2
+        assert len(pkg.batches[0].items) == 100
+        assert len(pkg.batches[1].items) == 50
+        # Первый успех → document_id фиксируется
+        assert pkg.document_id == "doc-batch-0"
+
+    def test_partial_success(self, builder: PackageBuilder, transport: FakeTransport) -> None:
+        """PARTIAL: первый батч успешен, второй падает."""
+        call_idx = [0]
+
+        class PartialTransport:
+            def __call__(self, method, url, **kwargs):
+                idx = call_idx[0]
+                call_idx[0] += 1
+                if idx == 0:
+                    return type("R", (), {"status_code": 200, "text": "", "json": lambda self: {"documentId": "doc-partial-ok"}})()
+                return type("R", (), {"status_code": 500, "text": "", "json": lambda self: {"error": "server error"}})()
+
+        builder._transport = PartialTransport()
+        imp = _make_many_import(accepted_count=150)
+        settings = _make_settings()
+        pkg = builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        assert pkg.status == PARTIAL
+        assert len(pkg.batches) == 2
+        assert pkg.batches[0].status == CONFIRMED
+        assert pkg.batches[1].status == FAILED
+        # document_id от первого успешного батча
+        assert pkg.document_id == "doc-partial-ok"
+
+    def test_401_retry_on_batch(self, builder: PackageBuilder, auth_client: Any) -> None:
+        """401 на батч → reset token + повтор, успех."""
+        call_idx = [0]
+        original_token = auth_client._token
+
+        class RetryTransport:
+            def __call__(self, method, url, **kwargs):
+                idx = call_idx[0]
+                call_idx[0] += 1
+                if idx == 0:
+                    return type("R", (), {"status_code": 401, "text": "", "json": lambda self: {"error": "unauthorized"}})()
+                return type("R", (), {"status_code": 200, "text": "", "json": lambda self: {"documentId": "doc-after-401"}})()
+
+        builder._transport = RetryTransport()
+        imp = _make_many_import(accepted_count=2)
+        settings = _make_settings()
+        pkg = builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        assert pkg.status == CONFIRMED
+        assert pkg.document_id == "doc-after-401"
+        # Токен сброшен
+        assert auth_client._token != original_token
+        # Было 2 вызова транспорта (первый 401, второй успех)
+        assert call_idx[0] == 2
+
+    def test_summary_accepted_submitted_failed(self, builder: PackageBuilder) -> None:
+        """summary.accepted_submitted и accepted_failed корректны."""
+        call_idx = [0]
+
+        class SummaryTransport:
+            def __call__(self, method, url, **kwargs):
+                idx = call_idx[0]
+                call_idx[0] += 1
+                if idx == 0:
+                    # Первый батч успешен
+                    return type("R", (), {"status_code": 200, "text": "", "json": lambda self: {"documentId": "doc-ok"}})()
+                # Второй батч падает
+                return type("R", (), {"status_code": 403, "text": "", "json": lambda self: {"error": "forbidden"}})()
+
+        builder._transport = SummaryTransport()
+        # 150 items: batch 0 = 100 items (success), batch 1 = 50 items (fail)
+        imp = _make_many_import(accepted_count=150)
+        settings = _make_settings()
+        pkg = builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        assert pkg.status == PARTIAL
+        assert pkg.summary is not None
+        assert pkg.summary.accepted_submitted == 100
+        assert pkg.summary.accepted_failed == 50
+        assert pkg.summary.accepted == 150
+
+    def test_store_saves_batches(self, builder: PackageBuilder, transport: FakeTransport) -> None:
+        """store.save() сохраняет пакет со всеми батчами."""
+        transport.set_response(200, json_data={"documentId": "doc-store-batch"})
+        store = PackageStore()
+        imp = _make_many_import(accepted_count=250)
+        settings = _make_settings()
+        pkg = builder.create(imp, settings, action_date="2026-09-03", document_number="DOC-001", document_date="2026-09-03")
+        store.save(pkg)
+        retrieved = store.get(pkg.id)
+        assert retrieved is not None
+        assert len(retrieved.batches) == 3  # 250 = 100 + 100 + 50
+        assert retrieved.batches[0].status == CONFIRMED
+        assert retrieved.batches[1].status == CONFIRMED
+        assert retrieved.batches[2].status == CONFIRMED
+        assert len(retrieved.batches[0].items) == 100
+        assert len(retrieved.batches[1].items) == 100
+        assert len(retrieved.batches[2].items) == 50
