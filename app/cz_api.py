@@ -5,8 +5,17 @@ import base64
 import json
 import logging
 from datetime import datetime
-from app.utils import load_settings, get_product_group_code
-from app.config import CZ_API_URL
+# TODO: заменить на chestny signer после выделения подписи в app.chestny.services
+# Временно — импорты из удалённых модулей обёрнуты в try/except.
+try:
+    from app.utils import load_settings, get_product_group_code  # type: ignore[attr-defined]
+    from app.config import CZ_API_URL  # type: ignore[attr-defined]
+except ImportError:
+    # Модули удалены; функции, использующие их, будут падать с RuntimeError.
+    # chestny использует только list_certificates() и _sign_data() — они не зависят от этих импортов.
+    load_settings = None  # type: ignore[assignment]
+    get_product_group_code = None  # type: ignore[assignment]
+    CZ_API_URL = None  # type: ignore[assignment]
 
 _uuid_token = None
 

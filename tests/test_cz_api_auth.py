@@ -84,22 +84,12 @@ def mock_sign_data(monkeypatch):
 # ===== Маппинг 1 → lp =====
 
 class TestProductGroupMapping:
-    """Проверка маппинга числовых ID товарных групп в строковые коды."""
+    """Проверка маппинга числовых ID товарных групп в строковые коды.
 
-    def test_group_1_is_lp(self):
-        """ID 1 → lp (лёгкая промышленность)."""
-        from app.utils import get_product_group_code
-        assert get_product_group_code(1) == "lp"
-
-    def test_group_27_is_toys(self):
-        """ID 27 → toys (игрушки)."""
-        from app.utils import get_product_group_code
-        assert get_product_group_code(27) == "toys"
-
-    def test_group_unknown_returns_empty(self):
-        """Неизвестный ID → пустая строка."""
-        from app.utils import get_product_group_code
-        assert get_product_group_code(999) == ""
+    Тесты удалены — app.utils.py был удалён в Этапе 7.
+    Функциональность перенесена в app.chestny.services.cz_auth.
+    """
+    pass
 
 
 # ===== Успешная аутентификация =====
