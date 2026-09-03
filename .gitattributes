@@ -1,2 +1,2 @@
-# Ensure Windows batch files always use CRLF line endings
-*.bat text eol=crlf
+# Store batch files with CRLF so GitHub ZIP downloads run in cmd.exe.
+*.bat -text
