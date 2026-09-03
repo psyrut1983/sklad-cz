@@ -23,19 +23,19 @@ echo PORT=%PORT% >>"%LOG%"
 
 :: ---- 1. Find Python ----
 set "PYTHON="
-where python >nul 2>&1
-if not errorlevel 1 set "PYTHON=python"
-if not defined PYTHON (
-    where py >nul 2>&1
-    if not errorlevel 1 set "PYTHON=py -3"
-)
+call :try_python "py -3.12"
+if not defined PYTHON call :try_python "py -3.11"
+if not defined PYTHON call :try_python "py -3.13"
+if not defined PYTHON call :try_python "python"
+
 if not defined PYTHON (
     echo.
-    echo   [!] Python not found.
-    echo   Install Python 3.10+ from python.org
+    echo   [!] Supported Python not found.
+    echo   Install Python 3.12 from python.org
     echo   and check "Add Python to PATH".
+    echo   Python 3.14 is not used because Windows dependencies may fail.
     echo.
-    echo Python not found >>"%LOG%"
+    echo Supported Python not found >>"%LOG%"
     pause
     exit /b 1
 )
@@ -52,6 +52,26 @@ if errorlevel 1 (
 )
 
 :: ---- 2. Create venv ----
+set "PY_VENV=%VENV%\Scripts\python.exe"
+
+if exist "%PY_VENV%" (
+    "%PY_VENV%" -c "import sys; raise SystemExit(0 if sys.version_info[:2] in ((3, 11), (3, 12), (3, 13)) else 1)" >>"%LOG%" 2>&1
+    if errorlevel 1 (
+        echo.
+        echo   Existing venv uses unsupported Python. Recreating it...
+        echo Recreating unsupported venv >>"%LOG%"
+        rmdir /s /q "%VENV%" >>"%LOG%" 2>&1
+        if errorlevel 1 (
+            echo   [!] Failed to remove old venv folder.
+            echo   Close Python processes and delete: %VENV%
+            echo.
+            pause
+            exit /b 1
+        )
+        if exist "%MARKER%" del "%MARKER%" >nul 2>&1
+    )
+)
+
 if not exist "%VENV%\Scripts\python.exe" (
     echo.
     echo   Creating virtual environment...
@@ -67,7 +87,6 @@ if not exist "%VENV%\Scripts\python.exe" (
     del "%MARKER%" 2>nul
 )
 
-set "PY_VENV=%VENV%\Scripts\python.exe"
 set "PIP=%VENV%\Scripts\pip.exe"
 
 :: ---- 3. Check requirements.txt ----
@@ -152,3 +171,12 @@ if !EXIT_CODE! neq 0 (
 )
 
 pause
+exit /b 0
+
+:try_python
+set "CANDIDATE=%~1"
+%CANDIDATE% -c "import sys; raise SystemExit(0 if sys.version_info[:2] in ((3, 11), (3, 12), (3, 13)) else 1)" >nul 2>&1
+if not errorlevel 1 (
+    set "PYTHON=%CANDIDATE%"
+)
+exit /b 0
