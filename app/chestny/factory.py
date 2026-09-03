@@ -154,6 +154,53 @@ def _seed_profiles() -> None:
     db.session.commit()
 
 
+def _reconcile_orphaned_packages(app: Flask) -> None:
+    """Один проход reconciliation для осиротевших PARTIAL/UNKNOWN пакетов.
+
+    При старте пакеты in-memory, так что это no-op.
+    Вызов сохранён для правильной инициализации цепочки вызовов.
+    """
+    pkg_store = app.extensions.get("package_store")
+    if pkg_store is None:
+        return
+
+    # Если есть PARTIAL/UNKNOWN пакеты — пробуем создать reconciler.
+    # При старте пакетов нет, поэтому выходим сразу.
+    has_candidates = bool(
+        pkg_store.list_by_status("PARTIAL") or pkg_store.list_by_status("UNKNOWN")
+    )
+    if not has_candidates:
+        return
+
+    from app.chestny.services.reconciliation import ScheduledReconciler, ReconciliationService
+    from app.chestny.services.cz_status import CzStatusClient
+    from app.chestny.services.cz_auth import CzAuthClientPool
+
+    auth_pool = app.extensions.get("auth_pool")
+    if auth_pool is None:
+        auth_pool = CzAuthClientPool()
+        app.extensions["auth_pool"] = auth_pool
+
+    transport = app.extensions.get("cz_transport")
+    if transport is None:
+        return  # транспорт не настроен — не можем сверять
+
+    from app.chestny.models import OrganizationProfile
+    profile = OrganizationProfile.query.first()
+    if profile is None:
+        return
+
+    auth_client = auth_pool.get_or_create(
+        profile_id=profile.id,
+        api_base_url="https://example.com",
+        inn="",
+        certificate_thumbprint="",
+    )
+    status_client = CzStatusClient(auth_client, transport)
+    reconciler = ScheduledReconciler(pkg_store, ReconciliationService(status_client))
+    reconciler.run_once()
+
+
 def _cleanup_on_startup(app: Flask) -> None:
     """Очистка осиротевших временных данных при старте."""
     # Cleanup expired active imports
@@ -181,3 +228,6 @@ def _cleanup_on_startup(app: Flask) -> None:
                     os.unlink(os.path.join(inst, fname))
                 except OSError:
                     pass
+
+    # ── Reconciliation orphaned packages ─────────────────────────────────
+    _reconcile_orphaned_packages(app)
