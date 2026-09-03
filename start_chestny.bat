@@ -1,10 +1,14 @@
 @echo off
 chcp 65001 >nul 2>&1
-setlocal enabledelayedexpansion
+setlocal EnableExtensions EnableDelayedExpansion
 
-title Честный Знак
+title Chestny Znak
 
-cd /d "%~dp0"
+cd /d "%~dp0" || (
+    echo [ERROR] Cannot open project folder: %~dp0
+    pause
+    exit /b 1
+)
 
 set "ROOT=%CD%"
 set "LOG=%ROOT%\start_chestny.log"
@@ -13,7 +17,7 @@ set "MARKER=%VENV%\.installed"
 set "PORT=%CZ_PORT%"
 if not defined PORT set "PORT=5100"
 
-echo [%date% %time%] start_chestny.bat запущен >"%LOG%"
+echo [%date% %time%] start_chestny.bat started >"%LOG%"
 echo ROOT=%ROOT% >>"%LOG%"
 echo PORT=%PORT% >>"%LOG%"
 
