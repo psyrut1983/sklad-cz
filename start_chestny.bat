@@ -40,6 +40,7 @@ if not defined PYTHON (
     exit /b 1
 )
 echo PYTHON=%PYTHON% >>"%LOG%"
+echo PYTHON_VERSION=%PYTHON_VERSION% >>"%LOG%"
 
 %PYTHON% --version >>"%LOG%" 2>&1
 if errorlevel 1 (
@@ -175,8 +176,23 @@ exit /b 0
 
 :try_python
 set "CANDIDATE=%~1"
-%CANDIDATE% -c "import sys; raise SystemExit(0 if sys.version_info[:2] in ((3, 11), (3, 12), (3, 13)) else 1)" >nul 2>&1
-if not errorlevel 1 (
+set "DETECTED_VERSION="
+set "PY_CHECK=%TEMP%\cz_python_check_%RANDOM%.txt"
+%CANDIDATE% -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))" >"%PY_CHECK%" 2>nul
+if exist "%PY_CHECK%" (
+    set /p DETECTED_VERSION=<"%PY_CHECK%"
+    del "%PY_CHECK%" >nul 2>&1
+)
+if "%DETECTED_VERSION%"=="3.11" (
     set "PYTHON=%CANDIDATE%"
+    set "PYTHON_VERSION=%DETECTED_VERSION%"
+)
+if "%DETECTED_VERSION%"=="3.12" (
+    set "PYTHON=%CANDIDATE%"
+    set "PYTHON_VERSION=%DETECTED_VERSION%"
+)
+if "%DETECTED_VERSION%"=="3.13" (
+    set "PYTHON=%CANDIDATE%"
+    set "PYTHON_VERSION=%DETECTED_VERSION%"
 )
 exit /b 0
