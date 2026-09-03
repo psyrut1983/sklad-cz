@@ -111,7 +111,11 @@ class PackageStoreError(PackageBuilderError):
 
 
 class PackageBuilder:
-    """Собирает пакет из активного импорта и отправляет в ЧЗ."""
+    """Собирает пакет из активного импорта и отправляет в ЧЗ.
+
+    Защита от double-click: один import_token может быть использован
+    для создания только одного пакета. Thread-safe.
+    """
 
     def __init__(
         self,
@@ -124,6 +128,8 @@ class PackageBuilder:
         self._transport = transport
         self._signer = signer
         self._hmac_key = hmac_key
+        self._used_tokens: set[str] = set()
+        self._lock = threading.Lock()
 
     def create(
         self,
@@ -138,6 +144,9 @@ class PackageBuilder:
 
         Разбивает items на батчи по {BATCH_SIZE} КИЗ.
         Каждый батч отправляется отдельным POST /doc/create.
+
+        Raises:
+            PackageBuilderError: если import_token уже использован.
         """
         # ── Валидация ────────────────────────────────────────────────────
         if active_import.expires_at is not None and active_import.expires_at < datetime.now(timezone.utc):
@@ -146,6 +155,14 @@ class PackageBuilder:
         profile_id = profile_settings.get("id")
         if active_import.profile_id != profile_id:
             raise PackageBuilderError("Импорт принадлежит другому профилю")
+
+        # ── Защита от double-click ───────────────────────────────────────
+        with self._lock:
+            if active_import.token in self._used_tokens:
+                raise PackageBuilderError(
+                    "Этот импорт уже был отправлен. Повторная отправка невозможна."
+                )
+            self._used_tokens.add(active_import.token)
 
         # ── Маппинг items ───────────────────────────────────────────────
         items: list[PackageItem] = []

@@ -38,9 +38,9 @@ from app.services.excel_import import AcceptedRow, ExcludedRow, ImportResult, Im
 from app.services.synthetic_xlsx import create_synthetic_xlsx
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 #  Фикстуры
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 
 @pytest.fixture
@@ -85,16 +85,16 @@ def _xlsx_bytes() -> bytes:
     return data
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 #  1. Double-click: повторная отправка
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 
 class TestDoubleClick:
     """Повторная отправка одного токена невозможна."""
 
     def test_double_preview_creates_two_tokens(self, client, app):
-        """Два POST с одним файлом → разные токены (не double-click)."""
+        """Два POST с одним файлом -> разные токены (не double-click)."""
         _configure_profile("org-sinyavin")
         raw = _xlsx_bytes()
 
@@ -117,7 +117,7 @@ class TestDoubleClick:
         assert t1 != t2, "Два POST с одним файлом дали одинаковый токен"
 
     def test_preview_after_delete_creates_new_token(self, client, app):
-        """POST → DELETE → POST → новый токен."""
+        """POST -> DELETE -> POST -> новый токен."""
         _configure_profile("org-sinyavin")
         raw = _xlsx_bytes()
 
@@ -138,15 +138,8 @@ class TestDoubleClick:
         t2 = r2.get_json()["import_token"]
         assert t1 != t2
 
-    @pytest.mark.xfail(strict=True, reason="double-click защита ещё не реализована на уровне отправки")
     def test_package_builder_rejects_double_click(self, app):
-        """
-        GAP: double-click защита на уровне отправки.
-
-        Ожидание: второй builder.create() с тем же ActiveImport должен
-        вернуть PackageBuilderError или FAILED-пакет.
-        Факт: второй create проходит успешно (два разных пакета).
-        """
+        """Второй builder.create() с тем же ActiveImport -> PackageBuilderError."""
         from app.chestny.services.active_imports import ActiveImport
 
         accepted = (
@@ -191,20 +184,93 @@ class TestDoubleClick:
             "api_base_url": "https://example.com/api/v3/true-api",
         }
 
-        # Первый вызов — успех
+        # Первый вызов - успех
         builder.create(imp, settings, action_date="2026-09-03",
                        document_number="DOC-001", document_date="2026-09-03")
 
         # Второй вызов с тем же ActiveImport ДОЛЖЕН быть отклонён
         from app.chestny.services.packaging import PackageBuilderError
-        with pytest.raises(PackageBuilderError, match="импорт уже использован"):
+        with pytest.raises(PackageBuilderError, match="уже был отправлен"):
             builder.create(imp, settings, action_date="2026-09-03",
                            document_number="DOC-001", document_date="2026-09-03")
 
+    def test_concurrent_double_click_race(self, app):
+        """Параллельные create() с одним токеном - только один успешен."""
+        from app.chestny.services.active_imports import ActiveImport
+        import threading
+        import concurrent.futures
 
-# ═════════════════════════════════════════════════════════════════════════════
+        accepted = (
+            AcceptedRow(
+                row_index=1,
+                ki="010123456789099921GOODS001ABCDE",
+                check_number="CHK001",
+                fn_number="FN001",
+                cost_kopecks=100,
+                date="2026-09-01",
+            ),
+        )
+        summary = ImportSummary(total_rows=1, accepted=1, excluded=0, by_reason={})
+        from datetime import datetime, timezone
+
+        imp = ActiveImport(
+            token="race-token",
+            profile_id="org-sinyavin",
+            accepted=accepted,
+            excluded=(),
+            summary=summary,
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc).replace(hour=23, minute=59, second=59),
+        )
+
+        auth = MagicMock()
+        auth.get_token.return_value = "tok"
+        auth.reset_token = MagicMock()
+        transport = MagicMock()
+        transport.return_value.status_code = 200
+        transport.return_value.text = ""
+        transport.return_value.json.return_value = {"documentId": "doc-race"}
+        signer = MagicMock(return_value="sig")
+
+        builder = PackageBuilder(auth, transport, signer, hmac_key=b"test-key-32-bytes!!!!!!!")
+
+        settings = {
+            "id": "org-sinyavin",
+            "inn": "123456789012",
+            "certificate_thumbprint": "AABBCCDDEE00112233445566778899AABBCCDD",
+            "fias_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            "api_base_url": "https://example.com/api/v3/true-api",
+        }
+
+        results: list[Exception | Package] = []
+        lock = threading.Lock()
+
+        def _create():
+            try:
+                pkg = builder.create(imp, settings, action_date="2026-09-03",
+                                     document_number="DOC-001", document_date="2026-09-03")
+                with lock:
+                    results.append(pkg)
+            except Exception as e:
+                with lock:
+                    results.append(e)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            futures = [ex.submit(lambda: _create()) for _ in range(4)]
+            concurrent.futures.wait(futures)
+
+        successes = [r for r in results if isinstance(r, Package) and r.status == CONFIRMED]
+        errors = [r for r in results if isinstance(r, Exception)]
+
+        assert len(successes) == 1, f"Должен быть ровно 1 успех, получено {len(successes)}"
+        assert len(errors) == 3, f"Должно быть 3 ошибки, получено {len(errors)}"
+        for e in errors:
+            assert "уже был отправлен" in str(e)
+
+
+# =============================================================================
 #  2. Restart: очистка осиротевших данных при старте
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 
 class TestRestartCleanup:
@@ -214,7 +280,6 @@ class TestRestartCleanup:
         """Пакеты без активного импорта удаляются при старте."""
         store = app.extensions["package_store"]
 
-        # Сохраняем пакет с несуществующим import_token
         orphan = Package(
             id="orphan-pkg",
             profile_id="org-sinyavin",
@@ -223,7 +288,6 @@ class TestRestartCleanup:
         )
         store.save(orphan)
 
-        # Симулируем повторный старт factory
         app.extensions["package_store"] = PackageStore()
         from app.chestny.factory import _cleanup_on_startup
         _cleanup_on_startup(app)
@@ -235,15 +299,12 @@ class TestRestartCleanup:
         """Временные XLSX-файлы в instance удаляются при старте."""
         inst = app.instance_path
 
-        # Создаём мусорный .xlsx
         junk = os.path.join(inst, "orphan_import.xlsx")
         Path(junk).write_text("not a real xlsx")
 
-        # Ещё один
         junk2 = os.path.join(inst, "package_abc12345.xlsx")
         Path(junk2).write_text("also junk")
 
-        # Файл не .xlsx — не должен трогаться
         safe = os.path.join(inst, "hmac.key")
         Path(safe).write_bytes(b"x" * 32)
 
@@ -258,14 +319,12 @@ class TestRestartCleanup:
         """Пакет с активным импортом НЕ удаляется при старте."""
         store = app.extensions["package_store"]
 
-        # Сначала создаём активный импорт
         active_store = app.extensions["active_imports"]
         raw = _xlsx_bytes()
         result = __import__("app.services.excel_import",
                             fromlist=["parse_xlsx"]).parse_xlsx(io.BytesIO(raw))
         token = active_store.create("org-sinyavin", result)
 
-        # Сохраняем пакет с этим токеном
         valid_pkg = Package(
             id="valid-pkg",
             profile_id="org-sinyavin",
@@ -274,20 +333,17 @@ class TestRestartCleanup:
         )
         store.save(valid_pkg)
 
-        # Симулируем рестарт
         app.extensions["package_store"] = PackageStore()
         from app.chestny.factory import _cleanup_on_startup
         _cleanup_on_startup(app)
 
         new_store = app.extensions["package_store"]
-        # Пакет должен быть удалён, т.к. import_store был сброшен
-        # (in-memory store не сохраняется между рестартами)
         assert new_store.get("valid-pkg") is None
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 #  3. Нет полного КИЗ в DB/payload/логах
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 # Валидный KI-31: 01 + GTIN-14 + 21 + serial-13
 KI31 = "010123456789012321SERIAL1234567"
@@ -303,7 +359,7 @@ class TestNoFullKizInDb:
     """ProcessedKiz не содержит полный КИЗ или криптохвост."""
 
     def test_processed_kiz_fields(self, app):
-        """ProcessedKiz имеет только hmac_digest, mask — не полный KI."""
+        """ProcessedKiz имеет только hmac_digest, mask - не полный KI."""
         pk = ProcessedKiz(
             hmac_digest="a" * 64,
             mask="0104****oMA",
@@ -314,9 +370,8 @@ class TestNoFullKizInDb:
         assert not hasattr(pk, "full_ki")
         assert not hasattr(pk, "raw_kiz")
         assert not hasattr(pk, "crypto_tail")
-        # mask — это маска, не полный KI
         assert pk.mask == "0104****oMA"
-        assert len(pk.mask) < 31  # маска короче KI
+        assert len(pk.mask) < 31
 
     def test_processed_kiz_repr_no_full_ki(self, app):
         """repr(ProcessedKiz) не содержит полный KI."""
@@ -345,15 +400,12 @@ class TestNoFullKizInDb:
         db.session.add(pk)
         db.session.commit()
 
-        # Читаем из БД
         from app.chestny.models import ProcessedKiz as PKModel
         saved = db.session.get(PKModel, pk.id)
         assert saved is not None
         assert saved.hmac_digest is not None
         assert saved.mask is not None
-        # Проверяем, что не храним полный KI
         assert saved.mask != KI31
-        # Проверяем, что нет колонки с полным KI
         insp = __import__("sqlalchemy", fromlist=["inspect"]).inspect(db.engine)
         columns = {c["name"] for c in insp.get_columns("processed_kiz")}
         assert "ki" not in columns
@@ -410,7 +462,6 @@ class TestNoCryptoInPayload:
         pkg = builder.create(imp, settings, action_date="2026-09-03",
                              document_number="DOC-001", document_date="2026-09-03")
 
-        # Проверяем inner JSON
         call_kwargs = transport.call_args[1]
         outer = call_kwargs.get("json", {})
         import base64, json
@@ -418,7 +469,6 @@ class TestNoCryptoInPayload:
         inner_str = inner_bytes.decode("utf-8")
         inner = json.loads(inner_str)
 
-        # В cis должен быть KI-31, а не полный KM с криптохвостом
         cis = inner["products"][0]["cis"]
         assert cis == KI31
         assert len(cis) == 31
@@ -430,7 +480,7 @@ class TestNoCryptoInResponse:
     """Ответы API не содержат криптохвост."""
 
     def test_preview_response_no_crypto(self, client, app):
-        """POST /api/imports/preview → response не содержит криптохвост."""
+        """POST /api/imports/preview -> response не содержит криптохвост."""
         _configure_profile("org-sinyavin")
         raw = _xlsx_bytes()
         data = {
@@ -445,7 +495,7 @@ class TestNoCryptoInResponse:
             assert marker not in text, f"Response содержит {marker!r}"
 
     def test_get_response_no_crypto(self, client, app):
-        """GET /api/imports/<token> → response не содержит криптохвост."""
+        """GET /api/imports/<token> -> response не содержит криптохвост."""
         _configure_profile("org-sinyavin")
         raw = _xlsx_bytes()
         data = {
@@ -498,7 +548,6 @@ class TestNoCryptoInResponse:
         text = str(data)
         for marker in CRYPTO_MARKERS:
             assert marker not in text, f"Package JSON содержит {marker!r}"
-        # KI31 тоже не должен быть в ответе (только маска)
         assert KI31 not in text
 
 
@@ -509,21 +558,18 @@ class TestNoCryptoInLogs:
         """Ошибки kiz_codec не содержат фрагменты полного КИЗ."""
         from app.services.kiz_codec import extract_ki
 
-        # Пробуем разные некорректные входные данные
         test_cases = [
-            FULL_KM_WITH_TAIL + "EXTRA",  # лишние данные после хвоста
-            KI31 + "91abcd",               # 91 без разделителя
-            KI31 + "\u001d" + "91ab",      # truncated 91
+            FULL_KM_WITH_TAIL + "EXTRA",
+            KI31 + "91abcd",
+            KI31 + "\u001d" + "91ab",
         ]
         for code in test_cases:
             try:
                 extract_ki(code)
             except Exception as e:
                 msg = str(e)
-                # Ошибка не должна содержать полный KI или криптохвост
                 for marker in CRYPTO_MARKERS:
                     assert marker not in msg, f"Ошибка содержит {marker!r}"
-                # Не должна содержать больше 3 символов подряд из KI
                 for i in range(len(KI31) - 3):
                     substr = KI31[i:i+4]
                     if substr.isalpha() and substr.isascii():
@@ -545,7 +591,6 @@ class TestNoCryptoInLogs:
         """Ошибки PackageBuilder не содержат полный KI."""
         from app.chestny.services.packaging import PackageBuilder
 
-        # Ошибка "wrong profile" не должна содержать KI
         auth = MagicMock()
         transport = MagicMock()
         signer = MagicMock()
