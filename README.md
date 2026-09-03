@@ -44,9 +44,17 @@ sudo apt install python3-dev gcc
 Скрипт сам найдёт Python, создаст виртуальное окружение, установит
 зависимости (только при первом запуске), запустит сервер и откроет браузер.
 
+Если нужен другой порт:
+
+```bat
+set CZ_PORT=5101
+start_chestny.bat
+```
+
 ### Ручная установка (запасной вариант)
 
 **Windows:**
+
 ```
 python -m venv venv
 venv\Scripts\pip install -r requirements.txt
