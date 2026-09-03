@@ -33,14 +33,24 @@ sudo apt install python3-dev gcc
 
 Для ЭЦП: установить **КриптоПро CSP Linux** и модуль `pycades`.
 
-## Установка
+## Установка и запуск
 
-### 1. Создать виртуальное окружение и установить зависимости
+### Windows (рекомендуемый способ)
+
+Просто запустите двойным кликом:
+
+    start_chestny.bat
+
+Скрипт сам найдёт Python, создаст виртуальное окружение, установит
+зависимости (только при первом запуске), запустит сервер и откроет браузер.
+
+### Ручная установка (запасной вариант)
 
 **Windows:**
 ```
 python -m venv venv
 venv\Scripts\pip install -r requirements.txt
+venv\Scripts\python -m app.chestny.runner --port 5100
 ```
 
 **Linux / Mac:**
@@ -48,17 +58,12 @@ venv\Scripts\pip install -r requirements.txt
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
-
-### 2. Запуск
-
-```bash
 python -m app.chestny.runner --port 5100
 ```
 
-Откроется в браузере: http://127.0.0.1:5100
-
 Приложение слушает только `127.0.0.1` и не принимает внешние подключения.
+
+Откроется в браузере: http://127.0.0.1:5100
 
 ## Структура проекта
 
