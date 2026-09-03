@@ -2,14 +2,22 @@
 chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 
-title Честный Знак — запуск
+title Честный Знак
 
-set "ROOT=%~dp0"
-set "VENV=%ROOT%venv"
+cd /d "%~dp0"
+
+set "ROOT=%CD%"
+set "LOG=%ROOT%\start_chestny.log"
+set "VENV=%ROOT%\venv"
 set "MARKER=%VENV%\.installed"
-set "PORT=5100"
+set "PORT=%CZ_PORT%"
+if not defined PORT set "PORT=5100"
 
-:: ── 1. Найти Python ────────────────────────────────────────────────
+echo [%date% %time%] start_chestny.bat запущен >"%LOG%"
+echo ROOT=%ROOT% >>"%LOG%"
+echo PORT=%PORT% >>"%LOG%"
+
+:: ---- 1. Find Python ----
 set "PYTHON="
 where python >nul 2>&1
 if not errorlevel 1 set "PYTHON=python"
@@ -19,87 +27,124 @@ if not defined PYTHON (
 )
 if not defined PYTHON (
     echo.
-    echo   [!] Python не найден. Установите Python 3.10+ и добавьте в PATH.
+    echo   [!] Python not found.
+    echo   Install Python 3.10+ from python.org
+    echo   and check "Add Python to PATH".
     echo.
+    echo Python not found >>"%LOG%"
     pause
     exit /b 1
 )
+echo PYTHON=%PYTHON% >>"%LOG%"
 
-:: Проверим, что python реально есть
-%PYTHON% --version >nul 2>&1
+%PYTHON% --version >>"%LOG%" 2>&1
 if errorlevel 1 (
     echo.
-    echo   [!] Python найден, но не запускается: %PYTHON%
+    echo   [!] Python found but not working.
     echo.
+    echo Python check failed >>"%LOG%"
     pause
     exit /b 1
 )
 
-:: ── 2. Виртуальное окружение ───────────────────────────────────────
+:: ---- 2. Create venv ----
 if not exist "%VENV%\Scripts\python.exe" (
     echo.
-    echo   Создание виртуального окружения...
-    %PYTHON% -m venv "%VENV%"
+    echo   Creating virtual environment...
+    echo Creating venv... >>"%LOG%"
+    %PYTHON% -m venv "%VENV%" >>"%LOG%" 2>&1
     if errorlevel 1 (
-        echo   [!] Не удалось создать venv.
+        echo   [!] Failed to create venv.
+        echo.
+        echo Venv creation failed >>"%LOG%"
         pause
         exit /b 1
     )
     del "%MARKER%" 2>nul
-    echo   Готово.
 )
 
 set "PY_VENV=%VENV%\Scripts\python.exe"
 set "PIP=%VENV%\Scripts\pip.exe"
 
-:: ── 3. Установка зависимостей ──────────────────────────────────────
+:: ---- 3. Check requirements.txt ----
+if not exist "%ROOT%\requirements.txt" (
+    echo.
+    echo   [!] requirements.txt not found.
+    echo.
+    echo requirements.txt not found >>"%LOG%"
+    pause
+    exit /b 1
+)
+
+:: ---- 4. Install dependencies ----
 if not exist "%MARKER%" (
     echo.
-    echo   Установка зависимостей (первый запуск)...
-    echo.
-    "%PIP%" install --upgrade pip >nul 2>&1
-    "%PIP%" install -r "%ROOT%requirements.txt"
+    echo   Installing dependencies (first run)...
+    echo Installing dependencies... >>"%LOG%"
+    "%PIP%" install --upgrade pip >>"%LOG%" 2>&1
+    "%PIP%" install -r "%ROOT%\requirements.txt" >>"%LOG%" 2>&1
     if errorlevel 1 (
         echo.
-        echo   [!] Ошибка установки зависимостей.
-        echo       Проверьте подключение к интернету и requirements.txt
+        echo   [!] Dependency installation failed.
+        echo   See log: %LOG%
+        echo.
         pause
         exit /b 1
     )
     copy nul "%MARKER%" >nul
-    echo   Зависимости установлены.
+    echo   Dependencies installed.
 )
 
-:: ── 4. Проверить порт ──────────────────────────────────────────────
-netstat -an 2>nul | findstr "127.0.0.1:%PORT% " >nul 2>&1
-if not errorlevel 1 (
+:: ---- 5. Verify runner import ----
+"%PY_VENV%" -c "import app.chestny.runner" >>"%LOG%" 2>&1
+if errorlevel 1 (
     echo.
-    echo   [!] Порт %PORT% уже занят.
-    echo       Возможно, приложение уже запущено.
-    echo       http://127.0.0.1:%PORT%
+    echo   [!] Cannot load application.
+    echo   Dependencies may be incomplete.
+    echo   Delete venv folder and run again.
+    echo   See log: %LOG%
+    echo.
     pause
     exit /b 1
 )
 
-:: ── 5. Запустить сервер ────────────────────────────────────────────
+:: ---- 6. Check port ----
+netstat -an 2>>"%LOG%" | findstr "127.0.0.1:%PORT% " >nul 2>&1
+if not errorlevel 1 (
+    echo.
+    echo   [!] Port %PORT% already in use.
+    echo   Application may already be running.
+    echo   http://127.0.0.1:%PORT%
+    echo.
+    echo Port %PORT% already in use >>"%LOG%"
+    pause
+    exit /b 1
+)
+
+:: ---- 7. Launch ----
 echo.
 echo   ============================================
-echo     Честный Знак
+echo     Chestny Znak
 echo     http://127.0.0.1:%PORT%
 echo   ============================================
 echo.
-echo   Запуск сервера...
+echo   Starting server...
 
-:: Открыть браузер через 3 секунды (даём серверу время стартануть)
-start "" cmd /c "timeout /t 3 /nobreak >nul & start http://127.0.0.1:%PORT%"
+echo Starting server... >>"%LOG%"
 
-:: Запуск приложения
+:: Open browser after 3 seconds
+start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 3; Start-Process 'http://127.0.0.1:%PORT%'"
+
 "%PY_VENV%" -m app.chestny.runner --port %PORT%
-if errorlevel 1 (
+set EXIT_CODE=!ERRORLEVEL!
+echo Server exited with code !EXIT_CODE! >>"%LOG%"
+
+if !EXIT_CODE! neq 0 (
     echo.
-    echo   [!] Сервер завершился с ошибкой (код: !errorlevel!).
+    echo   [!] Server error (code: !EXIT_CODE!).
+    echo   See log: %LOG%
+    echo.
     pause
-    exit /b 1
 )
 
 pause
