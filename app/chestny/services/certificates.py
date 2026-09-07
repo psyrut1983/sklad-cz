@@ -112,6 +112,20 @@ def diagnose_profile_certificate(thumbprint: str | None) -> dict[str, Any]:
     return result
 
 
+def can_sign_with_certificate(thumbprint: str) -> bool:
+    """Actually exercise the private key with a harmless local signature.
+
+    ``HasPrivateKey`` only means that Windows remembers a key-container link;
+    it can remain true while a USB token is disconnected.
+    """
+    try:
+        from app.cz_api import _sign_data
+        signature = _sign_data("CZ_LOCAL_CERTIFICATE_CHECK", thumbprint)
+        return isinstance(signature, str) and bool(signature.strip())
+    except Exception:
+        return False
+
+
 class CertificateBackendError(Exception):
     """Ошибка backend диагностики сертификатов (безопасное сообщение)."""
     pass

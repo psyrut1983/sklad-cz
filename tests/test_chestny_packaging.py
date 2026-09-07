@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -200,6 +203,23 @@ class TestPackageItem:
 
 
 class TestCreatePackage:
+    def test_decimal_cost_is_serialized_as_integer(
+        self, builder: PackageBuilder, transport: FakeTransport
+    ) -> None:
+        imp = _make_import(accepted_count=1)
+        decimal_row = replace(imp.accepted[0], cost_kopecks=Decimal("1215800"))
+        imp = replace(imp, accepted=(decimal_row,))
+        transport.set_response(201, {"documentId": str(uuid.uuid4())})
+
+        builder.create(
+            imp, _make_settings(), "2026-09-04", "WB-1", "2026-09-04"
+        )
+
+        outer = transport.requests[0]["json"]
+        inner = json.loads(base64.b64decode(outer["product_document"]))
+        assert inner["products"][0]["product_cost"] == 1215800
+        assert isinstance(inner["products"][0]["product_cost"], int)
+
     def test_create_success(self, builder: PackageBuilder, transport: FakeTransport) -> None:
         transport.set_response(200, json_data={"documentId": "doc-12345-uuid"})
         imp = _make_import()

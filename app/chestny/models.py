@@ -141,7 +141,7 @@ class ProcessedKiz(db.Model):
     __tablename__ = "processed_kiz"
 
     id = db.Column(db.Integer, primary_key=True)
-    hmac_digest = db.Column(db.String(128), unique=True, nullable=False)  # глобальный unique
+    hmac_digest = db.Column(db.String(128), nullable=False)
     mask = db.Column(db.String(20), nullable=False)  # маска для UI (первые 4 + последние 4)
     profile_id = db.Column(db.String(50),
                            db.ForeignKey("organization_profile.id", ondelete="CASCADE"),
@@ -152,7 +152,8 @@ class ProcessedKiz(db.Model):
                              default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
-        db.Index("idx_processed_kiz_hmac", "hmac_digest", unique=True),
+        db.UniqueConstraint("profile_id", "hmac_digest", name="uq_processed_kiz_profile_hmac"),
+        db.Index("idx_processed_kiz_profile_hmac", "profile_id", "hmac_digest"),
     )
 
     def __repr__(self) -> str:

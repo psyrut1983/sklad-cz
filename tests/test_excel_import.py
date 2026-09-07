@@ -435,6 +435,9 @@ class TestDateNormalization:
         """str '2026-09-01' → '2026-09-01'."""
         assert _normalize_date("2026-09-01") == "2026-09-01"
 
+    def test_wildberries_time_first_string(self):
+        assert _normalize_date("02:06:00 04.09.2026") == "2026-09-04"
+
     def test_dd_mm_yyyy(self):
         """str '01.09.2026' → '2026-09-01'."""
         assert _normalize_date("01.09.2026") == "2026-09-01"
@@ -538,6 +541,14 @@ class TestCurrencyEndToEnd:
         """' RUB ' (с пробелами) → accepted."""
         wb = make_wb(HEADERS)
         add_row(wb["КИЗ"], [1, "STK", KI_CLEAN, "CHK", 100, "  RUB  ", "FN",
+                            datetime.date(2026, 9, 1), "Продажа", "-"])
+        result = _save_and_parse(wb)
+        assert result.summary.accepted == 1
+
+    def test_ruble_symbol_accepted(self):
+        """Wildberries exports the Russian currency as the ₽ symbol."""
+        wb = make_wb(HEADERS)
+        add_row(wb["КИЗ"], [1, "STK", KI_CLEAN, "CHK", 100, "₽", "FN",
                             datetime.date(2026, 9, 1), "Продажа", "-"])
         result = _save_and_parse(wb)
         assert result.summary.accepted == 1

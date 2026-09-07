@@ -173,6 +173,7 @@ def diagnose_certificate(profile_id: str):
 
     from app.chestny.services.certificates import (
         CertificateBackendError,
+        can_sign_with_certificate,
         diagnose_profile_certificate,
     )
 
@@ -181,4 +182,9 @@ def diagnose_certificate(profile_id: str):
     except CertificateBackendError:
         return jsonify({"error": "Сервис сертификатов недоступен"}), 503
 
+    diag["can_sign"] = bool(
+        diag.get("found")
+        and diag.get("has_private_key")
+        and can_sign_with_certificate(p.certificate_thumbprint)
+    )
     return jsonify(diag)

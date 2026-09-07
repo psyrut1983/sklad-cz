@@ -1,8 +1,8 @@
-flask
-flask-sqlalchemy
+flask>=3.0,<4
+flask-sqlalchemy>=3.1,<4
 openpyxl>=3.1.0
-requests>=2.31.0
-gunicorn
-waitress
+requests>=2.31.0,<3
+waitress>=3.0,<4
 pywin32>=306; sys_platform == "win32"
 pycades>=1.1.4; sys_platform != "win32"
+tzdata>=2025.2; sys_platform == "win32"

@@ -8,8 +8,6 @@ chestny.runner — точка входа для приложения Честн�
 from __future__ import annotations
 
 import argparse
-import sys
-
 from app.chestny.factory import create_cz_app
 
 
@@ -25,7 +23,8 @@ def main() -> None:
     print(f"  http://127.0.0.1:{args.port}")
     print("=" * 60)
 
-    app.run(host="127.0.0.1", port=args.port, debug=False, use_reloader=False)
+    from waitress import serve
+    serve(app, host="127.0.0.1", port=args.port, threads=4)
 
 
 if __name__ == "__main__":

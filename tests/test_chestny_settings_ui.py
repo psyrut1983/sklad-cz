@@ -133,12 +133,13 @@ class TestDryRunUI:
         html = client.get("/").data.decode()
         assert "Отменить импорт" in html
 
-    def test_submit_cz_disabled_with_note(self, client):
+    def test_submit_cz_enabled_with_fields(self, client):
         html = client.get("/").data.decode()
         assert 'id="submit-cz-btn"' in html
-        assert "disabled" in html
-        assert "Отправка в Честный Знак" in html
-        assert "будет доступна позже" in html
+        assert "Отправить в Честный Знак" in html
+        assert 'id="action-date"' in html
+        assert 'id="document-number"' in html
+        assert 'id="document-date"' in html
 
     def test_gate_note_present(self, client):
         html = client.get("/").data.decode()

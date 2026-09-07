@@ -20,8 +20,9 @@ except ImportError:
 _uuid_token = None
 
 CADES_BES = 0x20
-CADESCOM_CURRENT_USER_STORE = 1
-CADESCOM_LOCAL_MACHINE_STORE = 2
+# CAPICOM_STORE_LOCATION values used by CAdESCOM.Store.Open.
+CADESCOM_CURRENT_USER_STORE = 2
+CADESCOM_LOCAL_MACHINE_STORE = 1
 CAPICOM_STORE_OPEN_READ_ONLY = 0
 
 _platform = sys.platform
@@ -140,8 +141,10 @@ def _list_certs_win() -> list:
     import win32com.client
     _com_init()
     try:
-        s = load_settings()
-        target_inn = s.get("cz_inn", "")
+        # The standalone Chestny app no longer has the legacy settings module.
+        # Profile filtering happens in the UI; enumerate every usable local
+        # certificate here so a newly installed certificate can be selected.
+        target_inn = ""
         results = []
         stores = [
             (CADESCOM_LOCAL_MACHINE_STORE, "Local Machine"),
@@ -164,6 +167,14 @@ def _list_certs_win() -> list:
                     except Exception:
                         has_priv = False
                     if not has_priv:
+                        continue
+                    try:
+                        public_key_oid = cert.PublicKey().Algorithm.Value
+                    except Exception:
+                        public_key_oid = ""
+                    # Qualified Russian electronic signatures use GOST OIDs.
+                    # Do not offer unrelated TLS/code-signing certificates.
+                    if not public_key_oid.startswith("1.2.643."):
                         continue
                     try:
                         subject = cert.SubjectName

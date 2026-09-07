@@ -1,88 +1,23 @@
 @echo off
-chcp 65001 >nul 2>&1
+setlocal
 cd /d "%~dp0"
-if errorlevel 1 (
-    echo Cannot open project folder: %~dp0
-    pause
-    exit /b 1
+set "PYTHON_CMD="
+py -3.12 -c "import sys" >nul 2>&1 && set "PYTHON_CMD=py -3.12"
+if not defined PYTHON_CMD python -c "import sys; assert sys.version_info >= (3,11) and sys.version_info < (3,14)" >nul 2>&1 && set "PYTHON_CMD=python"
+if not defined PYTHON_CMD (
+  echo Python 3.11-3.13 not found. Install Python 3.12 from python.org.
+  pause
+  exit /b 1
 )
-
-set LOG=start_chestny.log
-echo [%date% %time%] start_chestny.bat started >%LOG%
-
-:: ---- Find Python ----
-set PYTHON=py -3.12
-%PYTHON% -c "print(1)" >nul 2>&1
-if errorlevel 1 set PYTHON=py -3.11
-%PYTHON% -c "print(1)" >nul 2>&1
-if errorlevel 1 set PYTHON=py -3.13
-%PYTHON% -c "print(1)" >nul 2>&1
-if errorlevel 1 set PYTHON=python
-%PYTHON% -c "print(1)" >nul 2>&1
-if errorlevel 1 (
-    echo Python 3.11-3.13 not found.
-    echo Install Python 3.12 from python.org
-    pause
-    exit /b 1
-)
-echo Python: %PYTHON% >>%LOG%
-
-:: ---- Create venv ----
-if not exist venv\Scripts\python.exe (
-    echo Creating virtual environment...
-    rmdir /s /q venv >nul 2>&1
-    %PYTHON% -m venv venv
-    if errorlevel 1 (
-        %PYTHON% -m venv venv --without-pip
-        if errorlevel 1 (
-            echo Venv creation failed.
-            echo Try: py -3.12 -m venv D:\sklad-cz\venv
-            pause
-            exit /b 1
-        )
-        echo Installing pip...
-        venv\Scripts\python -m ensurepip --upgrade
-        if errorlevel 1 (
-            echo Pip install failed. Reinstall Python 3.12.
-            pause
-            exit /b 1
-        )
-    )
-    echo Venv created >>%LOG%
-)
-
-:: ---- Install dependencies ----
-if not exist venv\requirements.installed (
-    echo Installing dependencies (first run)...
-    venv\Scripts\pip install --upgrade pip >nul 2>&1
-    venv\Scripts\pip install -r requirements.txt
-    if errorlevel 1 (
-        echo Dependency installation failed.
-        pause
-        exit /b 1
-    )
-    copy nul venv\requirements.installed >nul
-    echo Dependencies installed >>%LOG%
-)
-
-:: ---- Check port ----
-netstat -an 2>nul | findstr /c:":5100 " >nul 2>&1
-if not errorlevel 1 (
-    echo Port 5100 is busy. Is the app already running?
-    echo Open http://127.0.0.1:5100
-    pause
-    exit /b 1
-)
-
-:: ---- Launch ----
-echo.
-echo ============================================
-echo   Chestny Znak
-echo   http://127.0.0.1:5100
-echo ============================================
-echo.
-echo Starting server...
-start http://127.0.0.1:5100
-venv\Scripts\python -m app.chestny.runner --port 5100
-echo.
+if not exist "venv\Scripts\python.exe" %PYTHON_CMD% -m venv venv || goto :error
+"venv\Scripts\python.exe" -c "import flask, flask_sqlalchemy, openpyxl, requests, waitress" >nul 2>&1
+if errorlevel 1 "venv\Scripts\python.exe" -m pip install -r requirements.txt || goto :error
+set "PORT=%CZ_PORT%"
+if not defined PORT set "PORT=5100"
+start "" "http://127.0.0.1:%PORT%"
+"venv\Scripts\python.exe" -m app.chestny.runner --port %PORT%
+exit /b %errorlevel%
+:error
+echo Installation or startup failed.
 pause
+exit /b 1

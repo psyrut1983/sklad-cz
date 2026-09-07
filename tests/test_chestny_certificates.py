@@ -13,6 +13,7 @@ from app.chestny.factory import create_cz_app, db
 from app.chestny.models import OrganizationProfile
 from app.chestny.services.certificates import (
     CertificateBackendError,
+    can_sign_with_certificate,
     diagnose_profile_certificate,
     list_local_certificates,
 )
@@ -102,6 +103,17 @@ class TestListCerts:
 
 
 class TestDiagnose:
+    def test_real_sign_probe_success(self, monkeypatch):
+        monkeypatch.setattr("app.cz_api._sign_data", lambda data, tp: "signature")
+        assert can_sign_with_certificate(VALID_TP) is True
+
+    def test_real_sign_probe_failure(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.cz_api._sign_data",
+            lambda data, tp: (_ for _ in ()).throw(RuntimeError("token missing")),
+        )
+        assert can_sign_with_certificate(VALID_TP) is False
+
     def test_not_configured(self):
         assert diagnose_profile_certificate(None) == {
             "configured": False, "found": False, "has_private_key": False}
@@ -153,14 +165,16 @@ class TestApiDiagnose:
 
     def test_found(self, monkeypatch, client):
         monkeypatch.setattr("app.cz_api.list_certificates", lambda: [_good()])
-        monkeypatch.setattr("app.cz_api._sign_data", lambda *a: (_ for _ in ()).throw(RuntimeError))
+        monkeypatch.setattr("app.cz_api._sign_data", lambda *a: "signature")
         monkeypatch.setattr("app.cz_api.get_uuid_token", lambda *a: (_ for _ in ()).throw(RuntimeError))
         monkeypatch.setattr("requests.get", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError))
         monkeypatch.setattr("requests.post", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError))
         OrganizationProfile.query.get("org-sinyavin").certificate_thumbprint = VALID_TP
         db.session.commit()
         resp = client.post("/api/profiles/org-sinyavin/certificate/diagnose")
-        assert resp.status_code == 200 and resp.get_json()["found"] is True
+        assert resp.status_code == 200
+        assert resp.get_json()["found"] is True
+        assert resp.get_json()["can_sign"] is True
 
     def test_backend_503(self, monkeypatch, client):
         monkeypatch.setattr("app.cz_api.list_certificates",

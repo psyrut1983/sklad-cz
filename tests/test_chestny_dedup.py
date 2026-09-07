@@ -66,6 +66,8 @@ class TestHmacKey:
         assert k1 == k2
 
     def test_permissions_0600(self, tmp_instance):
+        if os.name == "nt":
+            pytest.skip("POSIX permission bits are not available on Windows")
         load_or_create_hmac_key(tmp_instance)
         st = os.stat(Path(tmp_instance) / "hmac.key")
         assert stat.S_IMODE(st.st_mode) == 0o600
@@ -84,6 +86,8 @@ class TestHmacKey:
             load_or_create_hmac_key(tmp_instance)
 
     def test_symlink_reject(self, tmp_instance):
+        if os.name == "nt":
+            pytest.skip("Creating symlinks requires Windows Developer Mode or elevation")
         target = Path(tmp_instance) / "target"
         target.write_bytes(b"x" * 32)
         link = Path(tmp_instance) / "hmac.key"
@@ -154,7 +158,7 @@ class TestFindDuplicates:
         )
         db.session.add(pk)
         db.session.commit()
-        result = find_confirmed_duplicates([KI31], key)
+        result = find_confirmed_duplicates([KI31], key, "org-sinyavin")
         assert KI31 in result
         assert result[KI31]["document_id"] == "doc-1"
 
@@ -167,7 +171,7 @@ class TestFindDuplicates:
         )
         db.session.add(pk)
         db.session.commit()
-        assert find_confirmed_duplicates([KI31], key) == {}
+        assert find_confirmed_duplicates([KI31], key, "org-sinyavin") == {}
 
     def test_failed_not_block(self, app, tmp_instance):
         key = load_or_create_hmac_key(tmp_instance)
@@ -178,7 +182,7 @@ class TestFindDuplicates:
         )
         db.session.add(pk)
         db.session.commit()
-        assert find_confirmed_duplicates([KI31], key) == {}
+        assert find_confirmed_duplicates([KI31], key, "org-sinyavin") == {}
 
     def test_unknown_not_block(self, app, tmp_instance):
         key = load_or_create_hmac_key(tmp_instance)
@@ -189,9 +193,9 @@ class TestFindDuplicates:
         )
         db.session.add(pk)
         db.session.commit()
-        assert find_confirmed_duplicates([KI31], key) == {}
+        assert find_confirmed_duplicates([KI31], key, "org-sinyavin") == {}
 
-    def test_across_profiles(self, app, tmp_instance):
+    def test_across_profiles_do_not_block_each_other(self, app, tmp_instance):
         key = load_or_create_hmac_key(tmp_instance)
         dig = hmac_digest(KI31, key)
         pk = ProcessedKiz(
@@ -201,9 +205,9 @@ class TestFindDuplicates:
         )
         db.session.add(pk)
         db.session.commit()
-        result = find_confirmed_duplicates([KI31], key)
+        assert find_confirmed_duplicates([KI31], key, "org-sinyavin") == {}
+        result = find_confirmed_duplicates([KI31], key, "org-krasikova")
         assert KI31 in result
-        assert result[KI31]["display_name"] == "ИП Красикова"
 
     def test_result_no_digest(self, app, tmp_instance):
         key = load_or_create_hmac_key(tmp_instance)
@@ -214,6 +218,6 @@ class TestFindDuplicates:
         )
         db.session.add(pk)
         db.session.commit()
-        result = find_confirmed_duplicates([KI31], key)
+        result = find_confirmed_duplicates([KI31], key, "org-sinyavin")
         assert "hmac_digest" not in result[KI31]
         assert "digest" not in str(result[KI31].keys())

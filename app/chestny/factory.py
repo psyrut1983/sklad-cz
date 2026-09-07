@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import os
 import secrets
+import threading
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
 
@@ -61,12 +64,29 @@ def create_cz_app(
     )
     app.config["TESTING"] = testing
 
+    if not testing:
+        log_handler = RotatingFileHandler(
+            Path(instance_path) / "chestny.log",
+            maxBytes=1_000_000,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        log_handler.setLevel(logging.INFO)
+        log_handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s: %(message)s"
+        ))
+        app.logger.addHandler(log_handler)
+        app.logger.setLevel(logging.INFO)
+
     if db_uri is None:
         db_path = os.path.join(instance_path, "cz.db")
         db_uri = f"sqlite:///{db_path}"
 
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    if testing and db_uri.startswith("sqlite:///"):
+        from sqlalchemy.pool import NullPool
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"poolclass": NullPool}
     app.secret_key = secret_key if secret_key is not None else secrets.token_hex(32)
 
     db.init_app(app)
@@ -76,6 +96,7 @@ def create_cz_app(
 
     with app.app_context():
         db.create_all()
+        _migrate_processed_kiz_to_profile_scope()
         _seed_profiles()
 
     # ── Blueprint ──────────────────────────────────────────────────────────
@@ -90,6 +111,14 @@ def create_cz_app(
     from app.chestny.services.packaging import PackageStore
     app.extensions["package_store"] = PackageStore()
 
+    # Per-process production dependencies. They remain injectable in tests.
+    from app.chestny.services.cz_auth import CzAuthRegistry, LegacySigner, RequestsTransport
+    app.extensions["auth_registry"] = CzAuthRegistry()
+    app.extensions["cz_auth_transport"] = RequestsTransport()
+    app.extensions["cz_signer"] = LegacySigner()
+    app.extensions["submission_lock"] = threading.Lock()
+    app.extensions["claimed_imports"] = set()
+
     # ── Cleanup orphaned data on startup ─────────────────────────────────────
     _cleanup_on_startup(app)
 
@@ -100,6 +129,9 @@ def create_cz_app(
     # ── Import blueprint ───────────────────────────────────────────────────
     from app.chestny.import_routes import cz_import_api
     app.register_blueprint(cz_import_api)
+
+    from app.chestny.submit_routes import cz_submit_api
+    app.register_blueprint(cz_submit_api)
 
     # ── Report blueprint ────────────────────────────────────────────────────
     from app.chestny.report_routes import cz_report
@@ -116,6 +148,63 @@ def create_cz_app(
         return render_template("chestny/settings.html")
 
     return app
+
+
+def _migrate_processed_kiz_to_profile_scope() -> None:
+    """Replace the legacy global KIZ uniqueness with per-profile uniqueness.
+
+    SQLite does not alter UNIQUE constraints in place, so existing installations
+    need a one-time table rebuild. Existing rows and document links are retained.
+    """
+    from sqlalchemy import text
+
+    if db.engine.dialect.name != "sqlite":
+        return
+    with db.engine.connect() as conn:
+        indexes = conn.execute(text("PRAGMA index_list('processed_kiz')")).mappings().all()
+        globally_unique = False
+        for index in indexes:
+            if not index["unique"]:
+                continue
+            escaped_name = str(index["name"]).replace("'", "''")
+            columns = [
+                row["name"]
+                for row in conn.execute(
+                    text(f"PRAGMA index_info('{escaped_name}')")
+                ).mappings().all()
+            ]
+            if columns == ["hmac_digest"]:
+                globally_unique = True
+                break
+    if not globally_unique:
+        return
+
+    with db.engine.begin() as conn:
+        conn.execute(text("ALTER TABLE processed_kiz RENAME TO processed_kiz_legacy_profile_scope"))
+        conn.execute(text("""
+            CREATE TABLE processed_kiz (
+                id INTEGER NOT NULL PRIMARY KEY,
+                hmac_digest VARCHAR(128) NOT NULL,
+                mask VARCHAR(20) NOT NULL,
+                profile_id VARCHAR(50) NOT NULL,
+                status VARCHAR(20) NOT NULL,
+                document_id VARCHAR(100),
+                processed_at DATETIME NOT NULL,
+                CONSTRAINT uq_processed_kiz_profile_hmac UNIQUE (profile_id, hmac_digest),
+                FOREIGN KEY(profile_id) REFERENCES organization_profile (id) ON DELETE CASCADE
+            )
+        """))
+        conn.execute(text("""
+            INSERT INTO processed_kiz
+                (id, hmac_digest, mask, profile_id, status, document_id, processed_at)
+            SELECT id, hmac_digest, mask, profile_id, status, document_id, processed_at
+            FROM processed_kiz_legacy_profile_scope
+        """))
+        conn.execute(text("DROP TABLE processed_kiz_legacy_profile_scope"))
+        conn.execute(text("""
+            CREATE INDEX idx_processed_kiz_profile_hmac
+            ON processed_kiz (profile_id, hmac_digest)
+        """))
 
 
 # ═════════════════════════════════════════════════════════════════════════════

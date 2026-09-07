@@ -243,7 +243,15 @@ class LegacySigner(Signer):
 
     def sign(self, data: str, thumbprint: str) -> str:
         from app.cz_api import _sign_data
-        return _sign_data(data, thumbprint)
+        try:
+            return _sign_data(data, thumbprint)
+        except Exception as exc:
+            # Do not expose provider internals/thumbprints, but retain a typed
+            # failure so the HTTP layer can give the operator useful guidance.
+            raise SigningError(
+                "Не удалось выполнить подпись. Проверьте, что USB-токен подключён "
+                "и доступен КриптоПро CSP."
+            ) from exc
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -301,6 +309,8 @@ class CzAuthClient:
                 signature = self._signer.sign(
                     challenge.data, self._credentials.certificate_thumbprint
                 )
+            except SigningError:
+                raise
             except Exception:
                 raise SigningError(
                     "Ошибка подписи запроса аутентификации"

@@ -220,10 +220,10 @@ def _normalize_date(value: Any) -> str | None:
                 return s
             except (ValueError, TypeError):
                 pass
-        # Russian "DD.MM.YYYY"
-        if len(s) == 10 and s[2] == "." and s[5] == ".":
+        # Wildberries uses both a plain Russian date and a time-first timestamp.
+        for date_format in ("%d.%m.%Y", "%H:%M:%S %d.%m.%Y", "%d.%m.%Y %H:%M:%S"):
             try:
-                dt = datetime.datetime.strptime(s, "%d.%m.%Y")
+                dt = datetime.datetime.strptime(s, date_format)
                 return dt.strftime("%Y-%m-%d")
             except (ValueError, TypeError):
                 pass
@@ -418,7 +418,8 @@ def parse_xlsx(path: str | BinaryIO) -> ImportResult:
                 ))
                 continue
 
-            if raw_currency.upper() != REQUIRED_CURRENCY:
+            normalized_currency = raw_currency.upper().replace(".", "").strip()
+            if normalized_currency not in {REQUIRED_CURRENCY, "RUR", "РУБ", "₽"}:
                 excluded.append(ExcludedRow(
                     row_index=data_row_index,
                     reason_code="unsupported_currency",

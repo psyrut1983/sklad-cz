@@ -234,15 +234,14 @@ class TestSchema:
             db.session.commit()
         db.session.rollback()
 
-    def test_processed_kiz_hmac_unique(self, app):
-        """hmac_digest имеет global unique constraint."""
+    def test_processed_kiz_hmac_unique_per_profile_schema(self, app):
+        """Схема фиксирует уникальность пары profile_id + hmac_digest."""
         inspector = sa_inspect(db.engine)
-        idxs = inspector.get_indexes("processed_kiz")
-        unique_cols = set()
-        for idx in idxs:
-            if idx.get("unique"):
-                unique_cols.update(idx["column_names"])
-        assert "hmac_digest" in unique_cols
+        constraints = inspector.get_unique_constraints("processed_kiz")
+        assert any(
+            set(item["column_names"]) == {"profile_id", "hmac_digest"}
+            for item in constraints
+        )
 
     def test_batch_state_check(self, app):
         """submission_batch.state имеет CHECK constraint с допустимыми значениями."""
@@ -291,8 +290,8 @@ class TestSchema:
         db.session.commit()
         assert pk.status == "PENDING"
 
-    def test_processed_kiz_hmac_global_unique(self, app):
-        """Глобальный unique: второй hmac_digest с тем же значением падает."""
+    def test_processed_kiz_hmac_unique_per_profile(self, app):
+        """Одинаковый КИЗ допустим для разных независимых профилей."""
         pk1 = ProcessedKiz(hmac_digest="unique-hash-1", mask="1234****5678",
                            profile_id="org-sinyavin")
         db.session.add(pk1)
@@ -300,8 +299,16 @@ class TestSchema:
 
         pk2 = ProcessedKiz(hmac_digest="unique-hash-1", mask="9999****0000",
                            profile_id="org-krasikova")
+        db.session.add(pk2)
+        db.session.commit()
+        assert ProcessedKiz.query.filter_by(hmac_digest="unique-hash-1").count() == 2
+
+        duplicate_same_profile = ProcessedKiz(
+            hmac_digest="unique-hash-1", mask="1111****2222",
+            profile_id="org-sinyavin",
+        )
         with pytest.raises(Exception):
-            db.session.add(pk2)
+            db.session.add(duplicate_same_profile)
             db.session.commit()
         db.session.rollback()
 

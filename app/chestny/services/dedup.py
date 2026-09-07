@@ -2,7 +2,7 @@
 chestny.services.dedup — HMAC-дедупликация КИЗ.
 
 Постоянный 32-байтовый ключ в instance/hmac.key (игнорируется Git).
-HMAC-SHA256 по очищенному КИ-31. Глобальная проверка дублей между профилями.
+HMAC-SHA256 по очищенному КИ-31. Проверка дублей изолирована по профилю.
 """
 
 from __future__ import annotations
@@ -109,14 +109,14 @@ def mask_ki(ki31: str) -> str:
 
 
 def find_confirmed_duplicates(
-    kis: list[str], key: bytes
+    kis: list[str], key: bytes, profile_id: str
 ) -> dict[str, dict[str, Any]]:
     """
-    Проверяет список КИ на глобальные дубли (только CONFIRMED).
+    Проверяет список КИ на дубли только внутри одного профиля.
 
     Возвращает mapping KI → {display_name, document_id, processed_at, mask}.
     """
-    if not kis:
+    if not kis or not profile_id:
         return {}
 
     digests = [hmac_digest(ki, key) for ki in kis]
@@ -126,6 +126,7 @@ def find_confirmed_duplicates(
         .join(OrganizationProfile, ProcessedKiz.profile_id == OrganizationProfile.id)
         .filter(
             ProcessedKiz.hmac_digest.in_(digests),
+            ProcessedKiz.profile_id == profile_id,
             ProcessedKiz.status == "CONFIRMED",
         )
         .all()

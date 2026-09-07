@@ -160,7 +160,7 @@ def preview_import():
 
     # ── Дубликаты ─────────────────────────────────────────────────────────
     accepted_kis = [row.ki for row in result.accepted]
-    confirmed_duplicates = find_confirmed_duplicates(accepted_kis, key)
+    confirmed_duplicates = find_confirmed_duplicates(accepted_kis, key, profile_id)
 
     # ── Исключённые из-за дублей ──────────────────────────────────────────
     final_excluded: list[ExcludedRow] = list(result.excluded)

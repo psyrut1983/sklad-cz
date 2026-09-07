@@ -218,8 +218,8 @@ class TestPreviewErrors:
         assert resp.status_code == 400
         assert resp.get_json()["code"] == "invalid_xlsx"
 
-    def test_confirmed_duplicate_from_other_profile(self, client, app):
-        """Дубликат из другого профиля → excluded с display_name в сообщении."""
+    def test_confirmed_duplicate_from_other_profile_is_independent(self, client, app):
+        """КИЗ другого юрлица не влияет на импорт текущего профиля."""
         _configure_profile("org-sinyavin")
 
         raw = _xlsx_bytes()
@@ -248,18 +248,13 @@ class TestPreviewErrors:
         resp, body = _post_preview(client)
         assert resp.status_code == 201
 
-        assert body["summary"]["accepted"] == 3
-        assert body["summary"]["excluded"] == 7
+        assert body["summary"]["accepted"] == 4
+        assert body["summary"]["excluded"] == 6
         assert body["summary"]["total_rows"] == 10
 
         dup_excluded = [e for e in body["excluded"]
                         if e["reason_code"] == "previously_confirmed"]
-        assert len(dup_excluded) == 1
-        msg = dup_excluded[0]["message"]
-        assert "Ранее подтверждён: ИП Красикова" in msg
-        assert "документ: doc-123" in msg
-        assert "ki" not in dup_excluded[0]
-        assert "digest" not in msg.lower()
+        assert dup_excluded == []
 
     def test_no_sign_auth_network_calls_post(self, client, app, monkeypatch):
         """POST: _sign_data/get_uuid_token/requests не вызваны."""
@@ -526,8 +521,9 @@ class TestIntegration:
 def test_py_compile():
     """Проверка компиляции import_routes.py и этого файла."""
     import py_compile
+    from pathlib import Path
     py_compile.compile(
-        "/root/.openclaw/workspace/sklad-cz/app/chestny/import_routes.py",
+        str(Path(__file__).parents[1] / "app" / "chestny" / "import_routes.py"),
         doraise=True,
     )
     py_compile.compile(__file__, doraise=True)

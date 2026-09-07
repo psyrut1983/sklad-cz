@@ -6,6 +6,20 @@ var gen = 0;
 var abort = null;
 var certOk = false;
 var activeImport = null;   // {token, profileId}
+var profileWorkspaces = Object.create(null);
+
+function workspace(pid) {
+  if (!profileWorkspaces[pid]) {
+    profileWorkspaces[pid] = {certOk: false, activeImport: null, preview: null};
+  }
+  return profileWorkspaces[pid];
+}
+
+function saveCurrentWorkspace() {
+  var ws = workspace(profileId);
+  ws.certOk = certOk;
+  ws.activeImport = activeImport;
+}
 
 var els = {};
 var btnEls = [];
@@ -31,6 +45,10 @@ function init() {
   els.dryrunTables = document.getElementById("dryrun-tables");
   els.cancelImportBtn = document.getElementById("cancel-import-btn");
   els.submitCzBtn = document.getElementById("submit-cz-btn");
+  els.actionDate = document.getElementById("action-date");
+  els.documentNumber = document.getElementById("document-number");
+  els.documentDate = document.getElementById("document-date");
+  els.documentName = document.getElementById("document-name");
 
   btnEls = [
     els.form.querySelector(".btn-primary"),
@@ -49,13 +67,16 @@ function init() {
 
   els.uploadBtn.addEventListener("click", onUpload);
   els.cancelImportBtn.addEventListener("click", onCancelImport);
+  els.submitCzBtn.addEventListener("click", onSubmitCz);
 
   els.cert.addEventListener("change", function() {
     certOk = false;
+    saveCurrentWorkspace();
     updateGate();
   });
 
   loadProfile(profileId);
+  loadReport();
 }
 
 function setBusy(busy) {
@@ -129,6 +150,8 @@ function cancelActiveImport(cb) {
   xhr.onload = function() {
     if (xhr.status === 204) {
       activeImport = null;
+      workspace(profileId).activeImport = null;
+      workspace(profileId).preview = null;
       cb(true);
     } else {
       cb(false);
@@ -143,24 +166,27 @@ function onTabClick(e) {
   var pid = btn.getAttribute("data-profile");
   if (pid === profileId) return;
 
-  if (!confirmIfActiveImport()) return;
+  saveCurrentWorkspace();
+  for (var i = 0; i < tabEls.length; i++) {
+    tabEls[i].classList.remove("active");
+    tabEls[i].setAttribute("aria-selected", "false");
+  }
+  btn.classList.add("active");
+  btn.setAttribute("aria-selected", "true");
 
-  var self = this;
-  cancelActiveImport(function(ok) {
-    if (!ok) return;
-    for (var i = 0; i < tabEls.length; i++) {
-      tabEls[i].classList.remove("active");
-      tabEls[i].setAttribute("aria-selected", "false");
-    }
-    btn.classList.add("active");
-    btn.setAttribute("aria-selected", "true");
-
-    profileId = pid;
-    certOk = false;
-    clearUpload();
-    updateGate();
-    loadProfile(pid);
-  });
+  profileId = pid;
+  var ws = workspace(pid);
+  certOk = ws.certOk;
+  activeImport = ws.activeImport;
+  clearUpload();
+  els.fileInput.value = "";
+  updateGate();
+  if (certOk && activeImport && ws.preview) {
+    showDryRun(ws.preview);
+    els.uploadControls.style.display = "none";
+  }
+  loadProfile(pid);
+  loadReport();
 }
 
 function validateAndBuildBody() {
@@ -253,6 +279,7 @@ function onSave(e) {
       els.cert.value = data.certificate_thumbprint || "";
 
       certOk = false;
+      saveCurrentWorkspace();
       updateGate();
       showStatus("Настройки сохранены");
       done(myGen);
@@ -307,6 +334,7 @@ function onRefreshCerts() {
       }
 
       certOk = false;
+      saveCurrentWorkspace();
       updateGate();
       showStatus("Сертификаты обновлены: " + certs.length);
       done(myGen);
@@ -350,15 +378,18 @@ function onCheckCert() {
       if (diag.found) {
         parts.push("Найден: да");
         parts.push("Закрытый ключ: " + (diag.has_private_key ? "есть" : "нет"));
+        parts.push("Тестовая подпись: " + (diag.can_sign ? "успешно" : "недоступна"));
       } else {
         parts.push("Найден: нет");
       }
 
-      if (diag.configured && diag.found && diag.has_private_key) {
+      if (diag.configured && diag.found && diag.has_private_key && diag.can_sign) {
         certOk = true;
+        saveCurrentWorkspace();
         updateGate();
       } else {
         certOk = false;
+        saveCurrentWorkspace();
         updateGate();
       }
 
@@ -419,6 +450,8 @@ function doUpload(myGen) {
     if (xhr.status === 201) {
       var data = JSON.parse(xhr.responseText);
       activeImport = { token: data.import_token, profileId: profileId };
+      workspace(profileId).activeImport = activeImport;
+      workspace(profileId).preview = data;
       showDryRun(data);
     } else {
       var errData;
@@ -538,6 +571,51 @@ function showDryRun(data) {
   }
 
   els.dryrunResults.style.display = "block";
+  var today = new Date().toISOString().slice(0, 10);
+  els.actionDate.value = today;
+  els.documentDate.value = today;
+  els.documentNumber.value = "WB-" + today.replace(/-/g, "") + "-" + data.import_token.slice(-6);
+}
+
+function onSubmitCz() {
+  if (activeImport === null) return;
+  if (!els.actionDate.value || !els.documentDate.value || !els.documentNumber.value.trim()) {
+    showUploadError("Заполните даты и номер первичного документа");
+    return;
+  }
+  if (!confirm("Отправить " + document.querySelectorAll(".dryrun-table tbody tr").length + " строк в Честный Знак? Операцию нельзя отменить.")) return;
+
+  var token = activeImport.token;
+  els.submitCzBtn.disabled = true;
+  els.cancelImportBtn.disabled = true;
+  els.uploadBusy.style.display = "block";
+  els.uploadBusy.textContent = "Подпись и отправка в Честный Знак…";
+
+  fetch("/api/imports/" + encodeURIComponent(token) + "/submit", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      action_date: els.actionDate.value,
+      document_date: els.documentDate.value,
+      document_number: els.documentNumber.value.trim(),
+      primary_document_custom_name: els.documentName.value.trim()
+    })
+  }).then(function(resp) {
+    return resp.json().then(function(data) { return {ok: resp.ok, data: data}; });
+  }).then(function(result) {
+    els.uploadBusy.style.display = "none";
+    if (!result.ok) throw new Error(result.data.message || "Ошибка отправки");
+    activeImport = null;
+    workspace(profileId).activeImport = null;
+    workspace(profileId).preview = null;
+    showStatus("Отправка завершена: " + result.data.submitted + ", ошибок: " + result.data.failed);
+    loadReport();
+  }).catch(function(err) {
+    els.uploadBusy.style.display = "none";
+    els.submitCzBtn.disabled = false;
+    els.cancelImportBtn.disabled = false;
+    showUploadError(err.message || "Ошибка отправки");
+  });
 }
 
 function onCancelImport() {
@@ -554,6 +632,8 @@ function onCancelImport() {
     els.uploadBusy.style.display = "none";
     if (xhr.status === 204) {
       activeImport = null;
+      workspace(profileId).activeImport = null;
+      workspace(profileId).preview = null;
       els.dryrunResults.style.display = "none";
       els.uploadError.style.display = "none";
       els.fileInput.value = "";
@@ -587,6 +667,10 @@ var reportGen = 0;
 
 function loadReport() {
   var myGen = ++reportGen;
+  var section = document.getElementById("report-section");
+  var summary = document.getElementById("report-summary");
+  if (section) section.style.display = "none";
+  if (summary) summary.textContent = "";
   var xhr = new XMLHttpRequest();
   xhr.open("GET", "/api/packages/" + encodeURIComponent(profileId), true);
 
@@ -595,8 +679,8 @@ function loadReport() {
     if (xhr.status !== 200) return;
 
     var packages = JSON.parse(xhr.responseText);
-    var section = document.getElementById("report-section");
-    var summary = document.getElementById("report-summary");
+    section = document.getElementById("report-section");
+    summary = document.getElementById("report-summary");
     var btn = document.getElementById("show-report-btn");
 
     if (!section || !summary) return;

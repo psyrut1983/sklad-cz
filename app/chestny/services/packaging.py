@@ -11,6 +11,7 @@ import base64
 import dataclasses
 import json
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -149,7 +150,12 @@ class PackageBuilder:
             PackageBuilderError: если import_token уже использован.
         """
         # ── Валидация ────────────────────────────────────────────────────
-        if active_import.expires_at is not None and active_import.expires_at < datetime.now(timezone.utc):
+        expires_at = active_import.expires_at
+        if isinstance(expires_at, datetime):
+            expired = expires_at <= datetime.now(timezone.utc)
+        else:
+            expired = expires_at is not None and float(expires_at) <= time.time()
+        if expired:
             raise PackageBuilderError("Срок действия импорта истёк")
 
         profile_id = profile_settings.get("id")
@@ -173,7 +179,9 @@ class PackageBuilder:
                 mask=mask_ki(row.ki),
                 check=row.check_number,
                 fn=row.fn_number,
-                cost_kopecks=row.cost_kopecks,
+                # The Excel parser uses Decimal for exact money arithmetic;
+                # CRPT expects a JSON integer containing kopecks.
+                cost_kopecks=int(row.cost_kopecks),
                 date=row.date,
             ))
 
@@ -184,7 +192,17 @@ class PackageBuilder:
             batch_list.append(BatchItem(index=len(batch_list), items=chunk))
 
         # ── Создание пакета ─────────────────────────────────────────────
-        summary = dataclasses.replace(active_import.summary, accepted_submitted=0, accepted_failed=0)
+        if isinstance(active_import.summary, ImportSummary):
+            summary = dataclasses.replace(
+                active_import.summary, accepted_submitted=0, accepted_failed=0
+            )
+        else:
+            summary = ImportSummary(
+                total_rows=int(active_import.summary.get("total_rows", 0)),
+                accepted=int(active_import.summary.get("accepted", 0)),
+                excluded=int(active_import.summary.get("excluded", 0)),
+                by_reason=dict(active_import.summary.get("by_reason", {})),
+            )
 
         pkg = Package(
             id=str(uuid.uuid4()),
@@ -286,15 +304,15 @@ class PackageBuilder:
 
         # 429 — rate limit, не повторяем
         if resp.status_code == 429:
-            return BatchResult(index=batch_index, success=False, error="Rate limited (429)")
+            return BatchResult(index=batch_index, success=False, error=self._response_error(resp))
 
         # 403/5xx — не повторяем
         if resp.status_code in (403,) or (500 <= resp.status_code < 600):
-            return BatchResult(index=batch_index, success=False, error=f"HTTP {resp.status_code}")
+            return BatchResult(index=batch_index, success=False, error=self._response_error(resp))
 
         # Остальные ошибки
         if resp.status_code not in (200, 201):
-            return BatchResult(index=batch_index, success=False, error=f"HTTP {resp.status_code}")
+            return BatchResult(index=batch_index, success=False, error=self._response_error(resp))
 
         document_id = self._extract_document_id(resp)
         if not document_id:
@@ -377,6 +395,23 @@ class PackageBuilder:
                 if val and isinstance(val, str):
                     return val
         return None
+
+    def _response_error(self, resp: Any) -> str:
+        """Return a short operator-safe rejection reason from CRPT."""
+        status = getattr(resp, "status_code", "?")
+        detail = ""
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                for key in ("error_message", "message", "error", "description"):
+                    value = data.get(key)
+                    if value:
+                        detail = str(value)
+                        break
+        except Exception:
+            detail = str(getattr(resp, "text", "") or "")
+        detail = " ".join(detail.split())[:500]
+        return f"HTTP {status}" + (f": {detail}" if detail else "")
 
 
 # ── PackageStore ────────────────────────────────────────────────────────────

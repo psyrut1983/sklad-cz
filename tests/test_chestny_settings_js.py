@@ -186,11 +186,14 @@ class TestSettingsJS:
         assert "certOk = false" in js
         assert "updateGate" in js
 
-    def test_js_confirm_on_tab_switch(self, client):
+    def test_js_keeps_separate_workspace_on_tab_switch(self, client):
         js = client.get("/static/chestny/settings.js").data.decode()
-        assert "cancelActiveImport" in js
+        assert "profileWorkspaces" in js
+        assert "workspace(pid)" in js
         assert "onTabClick" in js
-        assert "confirmIfActiveImport" in js
+        switch_body = js.split("function onTabClick", 1)[1].split("function validateAndBuildBody", 1)[0]
+        assert "cancelActiveImport" not in switch_body
+        assert "ws.preview" in switch_body
 
 
 class TestDryRunJS:
@@ -205,10 +208,12 @@ class TestDryRunJS:
         html = client.get("/").data.decode()
         assert 'id="cancel-import-btn"' in html
 
-    def test_submit_cz_btn_disabled(self, client):
+    def test_submit_cz_btn_enabled_and_wired(self, client):
         html = client.get("/").data.decode()
         assert 'id="submit-cz-btn"' in html
-        assert "disabled" in html
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert 'addEventListener("click", onSubmitCz)' in js
+        assert '/submit"' in js
 
     def test_dryrun_results_ids(self, client):
         html = client.get("/").data.decode()
@@ -297,6 +302,7 @@ class TestSettingsJSIntegration:
         monkeypatch.setattr("app.cz_api.list_certificates",
                             lambda: [{"thumbprint": VALID_TP, "subject": "CN=Test",
                                       "issuer": "CN=CA", "has_private_key": True, "store": "My"}])
+        monkeypatch.setattr("app.cz_api._sign_data", lambda *args: "signature")
         p = OrganizationProfile.query.get("org-sinyavin")
         p.certificate_thumbprint = VALID_TP
         db.session.commit()
