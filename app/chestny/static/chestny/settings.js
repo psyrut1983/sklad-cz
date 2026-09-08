@@ -10,7 +10,9 @@ var profileWorkspaces = Object.create(null);
 
 function workspace(pid) {
   if (!profileWorkspaces[pid]) {
-    profileWorkspaces[pid] = {certOk: false, activeImport: null, preview: null};
+    profileWorkspaces[pid] = {
+      certOk: false, activeImport: null, preview: null, selectedRows: []
+    };
   }
   return profileWorkspaces[pid];
 }
@@ -43,12 +45,18 @@ function init() {
   els.dryrunResults = document.getElementById("dryrun-results");
   els.dryrunSummary = document.getElementById("dryrun-summary");
   els.dryrunTables = document.getElementById("dryrun-tables");
+  els.submissionWorkspace = document.getElementById("submission-workspace");
+  els.excludedResults = document.getElementById("excluded-results");
   els.cancelImportBtn = document.getElementById("cancel-import-btn");
   els.submitCzBtn = document.getElementById("submit-cz-btn");
   els.actionDate = document.getElementById("action-date");
   els.documentNumber = document.getElementById("document-number");
   els.documentDate = document.getElementById("document-date");
   els.documentName = document.getElementById("document-name");
+  els.selectAllKiz = document.getElementById("select-all-kiz");
+  els.selectAllBtn = document.getElementById("select-all-btn");
+  els.clearSelectionBtn = document.getElementById("clear-selection-btn");
+  els.selectionSummary = document.getElementById("selection-summary");
 
   btnEls = [
     els.form.querySelector(".btn-primary"),
@@ -68,6 +76,11 @@ function init() {
   els.uploadBtn.addEventListener("click", onUpload);
   els.cancelImportBtn.addEventListener("click", onCancelImport);
   els.submitCzBtn.addEventListener("click", onSubmitCz);
+  els.selectAllKiz.addEventListener("change", function() {
+    setAllKizSelected(els.selectAllKiz.checked);
+  });
+  els.selectAllBtn.addEventListener("click", function() { setAllKizSelected(true); });
+  els.clearSelectionBtn.addEventListener("click", function() { setAllKizSelected(false); });
 
   els.cert.addEventListener("change", function() {
     certOk = false;
@@ -152,6 +165,7 @@ function cancelActiveImport(cb) {
       activeImport = null;
       workspace(profileId).activeImport = null;
       workspace(profileId).preview = null;
+      workspace(profileId).selectedRows = [];
       cb(true);
     } else {
       cb(false);
@@ -452,6 +466,9 @@ function doUpload(myGen) {
       activeImport = { token: data.import_token, profileId: profileId };
       workspace(profileId).activeImport = activeImport;
       workspace(profileId).preview = data;
+      workspace(profileId).selectedRows = data.accepted.map(function(row) {
+        return row.row_index;
+      });
       showDryRun(data);
     } else {
       var errData;
@@ -489,55 +506,12 @@ function showDryRun(data) {
     " | Исключено: " + s.excluded;
   els.dryrunSummary.appendChild(sumDiv);
 
-  // Tables
+  // The actionable rows always come first.  Exclusions are rendered separately
+  // at the bottom so a large diagnostic list never blocks the workflow.
   els.dryrunTables.textContent = "";
-
-  // Excluded table
-  if (data.excluded.length > 0) {
-    var exTitle = document.createElement("h3");
-    exTitle.textContent = "Исключено (" + data.excluded.length + ")";
-    els.dryrunTables.appendChild(exTitle);
-
-    var exTable = document.createElement("table");
-    exTable.className = "dryrun-table";
-
-    var exHead = document.createElement("thead");
-    var exHeadRow = document.createElement("tr");
-    var exTh1 = document.createElement("th");
-    exTh1.textContent = "Строка";
-    var exTh2 = document.createElement("th");
-    exTh2.textContent = "Причина";
-    var exTh3 = document.createElement("th");
-    exTh3.textContent = "Описание";
-    exHeadRow.appendChild(exTh1);
-    exHeadRow.appendChild(exTh2);
-    exHeadRow.appendChild(exTh3);
-    exHead.appendChild(exHeadRow);
-    exTable.appendChild(exHead);
-
-    var exBody = document.createElement("tbody");
-    for (var i = 0; i < data.excluded.length; i++) {
-      var ex = data.excluded[i];
-      var exRow = document.createElement("tr");
-      var exTd1 = document.createElement("td");
-      exTd1.textContent = String(ex.row_index);
-      var exTd2 = document.createElement("td");
-      exTd2.textContent = ex.reason_code;
-      var exTd3 = document.createElement("td");
-      exTd3.textContent = ex.message;
-      exRow.appendChild(exTd1);
-      exRow.appendChild(exTd2);
-      exRow.appendChild(exTd3);
-      exBody.appendChild(exRow);
-    }
-    exTable.appendChild(exBody);
-    els.dryrunTables.appendChild(exTable);
-  }
-
-  // Accepted table
   if (data.accepted.length > 0) {
     var acTitle = document.createElement("h3");
-    acTitle.textContent = "Принято (" + data.accepted.length + ")";
+    acTitle.textContent = "Доступно для вывода (" + data.accepted.length + ")";
     els.dryrunTables.appendChild(acTitle);
 
     var acTable = document.createElement("table");
@@ -545,6 +519,10 @@ function showDryRun(data) {
 
     var acHead = document.createElement("thead");
     var acHeadRow = document.createElement("tr");
+    var selectTh = document.createElement("th");
+    selectTh.className = "kiz-checkbox-cell";
+    selectTh.textContent = "✓";
+    acHeadRow.appendChild(selectTh);
     var acThs = ["Строка", "КИ", "Чек", "ФН", "Сумма (коп)", "Дата"];
     for (var j = 0; j < acThs.length; j++) {
       var th = document.createElement("th");
@@ -558,6 +536,17 @@ function showDryRun(data) {
     for (var k = 0; k < data.accepted.length; k++) {
       var a = data.accepted[k];
       var acRow = document.createElement("tr");
+      var selectTd = document.createElement("td");
+      selectTd.className = "kiz-checkbox-cell";
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "kiz-checkbox";
+      checkbox.setAttribute("data-row-index", String(a.row_index));
+      checkbox.setAttribute("aria-label", "Выбрать КИЗ из строки " + a.row_index);
+      checkbox.checked = workspace(profileId).selectedRows.indexOf(a.row_index) !== -1;
+      checkbox.addEventListener("change", updateSelection);
+      selectTd.appendChild(checkbox);
+      acRow.appendChild(selectTd);
       var fields = [String(a.row_index), a.ki, a.check_number, a.fn_number, String(a.cost_kopecks), a.date];
       for (var f = 0; f < fields.length; f++) {
         var td = document.createElement("td");
@@ -570,20 +559,138 @@ function showDryRun(data) {
     els.dryrunTables.appendChild(acTable);
   }
 
+  renderExcludedRows(data);
+  els.submissionWorkspace.style.display = data.accepted.length > 0 ? "block" : "none";
+
   els.dryrunResults.style.display = "block";
   var today = new Date().toISOString().slice(0, 10);
   els.actionDate.value = today;
   els.documentDate.value = today;
   els.documentNumber.value = "WB-" + today.replace(/-/g, "") + "-" + data.import_token.slice(-6);
+  updateSelection();
+}
+
+function renderExcludedRows(data) {
+  els.excludedResults.textContent = "";
+  if (data.excluded.length === 0) return;
+
+  var details = document.createElement("details");
+  details.className = "excluded-details";
+  // When nothing can be submitted, show the reasons immediately.  Otherwise
+  // keep hundreds of diagnostic rows collapsed until the user asks for them.
+  details.open = data.accepted.length === 0;
+
+  var summary = document.createElement("summary");
+  var summaryTitle = document.createElement("span");
+  summaryTitle.textContent = "Исключено (" + data.excluded.length + ")";
+  var toggleLabel = document.createElement("span");
+  toggleLabel.className = "excluded-toggle-label";
+  summary.appendChild(summaryTitle);
+  summary.appendChild(toggleLabel);
+  details.appendChild(summary);
+
+  var hint = document.createElement("p");
+  hint.className = "excluded-hint";
+  hint.textContent = "Эти строки не будут отправлены в Честный знак";
+  details.appendChild(hint);
+
+  var tableWrap = document.createElement("div");
+  tableWrap.className = "excluded-table-wrap";
+  var table = document.createElement("table");
+  table.className = "dryrun-table excluded-table";
+
+  var head = document.createElement("thead");
+  var headRow = document.createElement("tr");
+  var headings = ["Строка", "Причина", "Описание"];
+  for (var h = 0; h < headings.length; h++) {
+    var th = document.createElement("th");
+    th.textContent = headings[h];
+    headRow.appendChild(th);
+  }
+  head.appendChild(headRow);
+  table.appendChild(head);
+
+  var body = document.createElement("tbody");
+  for (var i = 0; i < data.excluded.length; i++) {
+    var excluded = data.excluded[i];
+    var row = document.createElement("tr");
+    var values = [String(excluded.row_index), excluded.reason_code, excluded.message];
+    for (var j = 0; j < values.length; j++) {
+      var td = document.createElement("td");
+      td.textContent = values[j];
+      row.appendChild(td);
+    }
+    body.appendChild(row);
+  }
+  table.appendChild(body);
+  tableWrap.appendChild(table);
+  details.appendChild(tableWrap);
+  els.excludedResults.appendChild(details);
+}
+
+function setAllKizSelected(selected) {
+  var checks = document.querySelectorAll(".kiz-checkbox");
+  for (var i = 0; i < checks.length; i++) checks[i].checked = selected;
+  updateSelection();
+}
+
+function updateSelection() {
+  var ws = workspace(profileId);
+  var checks = document.querySelectorAll(".kiz-checkbox");
+  var selected = [];
+  var selectedCost = 0;
+  var costByRow = Object.create(null);
+  if (ws.preview) {
+    for (var i = 0; i < ws.preview.accepted.length; i++) {
+      costByRow[ws.preview.accepted[i].row_index] = Number(ws.preview.accepted[i].cost_kopecks) || 0;
+    }
+  }
+  for (var j = 0; j < checks.length; j++) {
+    var rowIndex = Number(checks[j].getAttribute("data-row-index"));
+    var row = checks[j].closest("tr");
+    if (checks[j].checked) {
+      selected.push(rowIndex);
+      selectedCost += costByRow[rowIndex] || 0;
+      if (row) row.classList.remove("not-selected");
+    } else if (row) {
+      row.classList.add("not-selected");
+    }
+  }
+  ws.selectedRows = selected;
+  els.selectAllKiz.checked = checks.length > 0 && selected.length === checks.length;
+  els.selectAllKiz.indeterminate = selected.length > 0 && selected.length < checks.length;
+  els.selectionSummary.textContent = "Выбрано: " + selected.length + " из " + checks.length +
+    " · " + (selectedCost / 100).toLocaleString("ru-RU", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " ₽";
+  els.submitCzBtn.disabled = selected.length === 0;
+  els.submitCzBtn.textContent = selected.length > 0
+    ? "Вывести выбранные КИЗ (" + selected.length + ")"
+    : "Выберите КИЗ для вывода";
 }
 
 function onSubmitCz() {
   if (activeImport === null) return;
+  var ws = workspace(profileId);
+  var selectedRows = ws.selectedRows.slice();
+  if (selectedRows.length === 0) {
+    showUploadError("Выберите хотя бы один КИЗ");
+    return;
+  }
   if (!els.actionDate.value || !els.documentDate.value || !els.documentNumber.value.trim()) {
     showUploadError("Заполните даты и номер первичного документа");
     return;
   }
-  if (!confirm("Отправить " + document.querySelectorAll(".dryrun-table tbody tr").length + " строк в Честный Знак? Операцию нельзя отменить.")) return;
+  var selectedCost = 0;
+  for (var i = 0; ws.preview && i < ws.preview.accepted.length; i++) {
+    if (selectedRows.indexOf(ws.preview.accepted[i].row_index) !== -1) {
+      selectedCost += Number(ws.preview.accepted[i].cost_kopecks) || 0;
+    }
+  }
+  var profileName = ws.preview ? ws.preview.profile.display_name : profileId;
+  var rubles = (selectedCost / 100).toLocaleString("ru-RU", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  });
+  if (!confirm("Вывести из оборота " + selectedRows.length + " КИЗ на сумму " +
+      rubles + " ₽ для " + profileName + "? Операцию нельзя отменить.")) return;
 
   var token = activeImport.token;
   els.submitCzBtn.disabled = true;
@@ -598,17 +705,33 @@ function onSubmitCz() {
       action_date: els.actionDate.value,
       document_date: els.documentDate.value,
       document_number: els.documentNumber.value.trim(),
-      primary_document_custom_name: els.documentName.value.trim()
+      primary_document_custom_name: els.documentName.value.trim(),
+      selected_rows: selectedRows
     })
   }).then(function(resp) {
     return resp.json().then(function(data) { return {ok: resp.ok, data: data}; });
   }).then(function(result) {
     els.uploadBusy.style.display = "none";
+    if (result.data.remaining_import) {
+      var remaining = result.data.remaining_import;
+      activeImport = {token: remaining.import_token, profileId: profileId};
+      ws.activeImport = activeImport;
+      ws.preview = remaining;
+      ws.selectedRows = remaining.accepted.map(function(row) { return row.row_index; });
+      showDryRun(remaining);
+      els.uploadControls.style.display = "none";
+    }
     if (!result.ok) throw new Error(result.data.message || "Ошибка отправки");
-    activeImport = null;
-    workspace(profileId).activeImport = null;
-    workspace(profileId).preview = null;
-    showStatus("Отправка завершена: " + result.data.submitted + ", ошибок: " + result.data.failed);
+    if (!result.data.remaining_import) {
+      activeImport = null;
+      ws.activeImport = null;
+      ws.preview = null;
+      ws.selectedRows = [];
+    }
+    var remainingCount = result.data.remaining_import
+      ? result.data.remaining_import.summary.accepted : 0;
+    showStatus("Отправлено: " + result.data.submitted +
+      ", ошибок: " + result.data.failed + ", осталось в черновике: " + remainingCount);
     loadReport();
   }).catch(function(err) {
     els.uploadBusy.style.display = "none";
@@ -634,6 +757,7 @@ function onCancelImport() {
       activeImport = null;
       workspace(profileId).activeImport = null;
       workspace(profileId).preview = null;
+      workspace(profileId).selectedRows = [];
       els.dryrunResults.style.display = "none";
       els.uploadError.style.display = "none";
       els.fileInput.value = "";

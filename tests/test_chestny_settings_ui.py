@@ -111,6 +111,26 @@ class TestSettingsUI:
 
 
 class TestDryRunUI:
+    def test_kiz_selection_controls_present(self, client):
+        html = client.get("/").data.decode()
+        for element_id in (
+            "select-all-kiz", "select-all-btn", "clear-selection-btn",
+            "selection-summary",
+        ):
+            assert f'id="{element_id}"' in html
+
+    def test_actionable_workspace_precedes_exclusions(self, client):
+        html = client.get("/").data.decode()
+        assert 'id="submission-workspace"' in html
+        assert 'id="excluded-results"' in html
+        assert html.index('id="submission-workspace"') < html.index('id="excluded-results"')
+
+    def test_exclusions_are_outside_actionable_workspace(self, client):
+        html = client.get("/").data.decode()
+        workspace_end = html.index('id="report-section"')
+        exclusions = html.index('id="excluded-results"')
+        assert exclusions > workspace_end
+
     """Тесты разметки dry-run секции."""
 
     def test_upload_section_present(self, client):

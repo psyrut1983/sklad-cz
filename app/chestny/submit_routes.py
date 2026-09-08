@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 import hashlib
+from types import MappingProxyType
 from typing import Any
 
 import requests
@@ -11,7 +12,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from app.chestny.factory import db
 from app.chestny.models import ImportJob, OrganizationProfile, ProcessedKiz, SubmissionBatch
-from app.chestny.services.active_imports import ExpiredError, NotFoundError
+from app.chestny.services.active_imports import ActiveImport, ExpiredError, NotFoundError
 from app.chestny.services.cz_auth import CredentialsSnapshot, PRODUCTION_API_BASE_URL
 from app.chestny.services.cz_auth import (
     AccessDeniedError,
@@ -27,6 +28,7 @@ from app.chestny.services.cz_auth import (
 )
 from app.chestny.services.dedup import load_or_create_hmac_key
 from app.chestny.services.packaging import CONFIRMED, PackageBuilder, PackageBuilderError
+from app.services.excel_import import ImportResult, ImportSummary
 
 cz_submit_api = Blueprint("cz_submit_api", __name__, url_prefix="/api/imports")
 
@@ -42,6 +44,55 @@ def _required_date(data: dict[str, Any], name: str) -> str:
 
 def _request_transport(method: str, url: str, **kwargs: Any) -> requests.Response:
     return requests.request(method, url, **kwargs)
+
+
+def _select_submission_rows(active: ActiveImport, data: dict[str, Any]) -> ActiveImport:
+    """Build a server-authoritative subset from accepted Excel row numbers."""
+    raw = data.get("selected_rows")
+    if raw is None:  # Backward compatible: old UI submits every accepted row.
+        selected = list(active.accepted)
+    else:
+        if not isinstance(raw, list):
+            raise ValueError("selected_rows должен быть списком строк")
+        if not raw:
+            raise ValueError("Выберите хотя бы один КИЗ")
+        if any(type(value) is not int or value <= 0 for value in raw):
+            raise ValueError("Некорректный номер выбранной строки")
+        if len(raw) != len(set(raw)):
+            raise ValueError("Список выбранных строк содержит повторы")
+        accepted_by_index = {row.row_index: row for row in active.accepted}
+        unknown = set(raw) - set(accepted_by_index)
+        if unknown:
+            raise ValueError("Выбранная строка отсутствует в проверенном импорте")
+        wanted = set(raw)
+        selected = [row for row in active.accepted if row.row_index in wanted]
+
+    summary = MappingProxyType({
+        "total_rows": len(selected),
+        "accepted": len(selected),
+        "excluded": 0,
+        "by_reason": MappingProxyType({}),
+    })
+    return ActiveImport(
+        token=active.token,
+        profile_id=active.profile_id,
+        accepted=tuple(selected),
+        excluded=(),
+        summary=summary,
+        created_at=active.created_at,
+        expires_at=active.expires_at,
+    )
+
+
+def _remaining_result(active: ActiveImport, confirmed_kis: set[str]) -> ImportResult:
+    remaining = [row for row in active.accepted if row.ki not in confirmed_kis]
+    return ImportResult(
+        accepted=remaining,
+        excluded=[],
+        summary=ImportSummary(
+            total_rows=len(remaining), accepted=len(remaining), excluded=0
+        ),
+    )
 
 
 @cz_submit_api.route("/<token>/submit", methods=["POST"])
@@ -65,6 +116,11 @@ def submit_import(token: str):
         return jsonify({"code": "profile_not_configured", "message": "Профиль настроен не полностью"}), 422
     if not active.accepted:
         return jsonify({"code": "nothing_to_submit", "message": "Нет строк для отправки"}), 422
+
+    try:
+        submission = _select_submission_rows(active, data)
+    except ValueError as exc:
+        return jsonify({"code": "invalid_selection", "message": str(exc)}), 400
 
     if not current_app.config.get("TESTING"):
         from app.chestny.services.certificates import (
@@ -135,7 +191,7 @@ def submit_import(token: str):
             hmac_key=load_or_create_hmac_key(current_app.instance_path),
         )
         package = builder.create(
-            active,
+            submission,
             {
                 "id": profile.id,
                 "inn": profile.inn,
@@ -215,7 +271,23 @@ def submit_import(token: str):
         return jsonify({"code": "persistence_failed", "message": "Документ отправлен, но результат не удалось сохранить. Не отправляйте его повторно."}), 500
 
     current_app.extensions["package_store"].save(package)
-    store.pop(token)
+    confirmed_kis = {
+        item.ki31
+        for batch in package.batches if batch.status == CONFIRMED
+        for item in batch.items
+    }
+    try:
+        remaining_token = store.replace(token, _remaining_result(active, confirmed_kis))
+        remaining_preview = None
+        if remaining_token:
+            from app.chestny.import_routes import _serialize_preview
+            remaining_preview = _serialize_preview(store.get(remaining_token), profile)
+    except Exception:
+        current_app.logger.exception("Could not preserve unsubmitted import remainder")
+        return jsonify({
+            "code": "remainder_failed",
+            "message": "Результат отправки сохранён, но остаток импорта восстановить не удалось. Не повторяйте уже подтверждённые КИЗ.",
+        }), 500
     if package.status == "FAILED":
         errors = list(dict.fromkeys(b.error for b in package.batches if b.error))
         detail = "; ".join(errors) if errors else "причина не указана"
@@ -225,6 +297,7 @@ def submit_import(token: str):
             "status": package.status,
             "submitted": 0,
             "failed": package.summary.accepted_failed,
+            "remaining_import": remaining_preview,
         }), 422
     return jsonify({
         "package_id": package.id,
@@ -232,4 +305,5 @@ def submit_import(token: str):
         "document_id": package.document_id,
         "submitted": package.summary.accepted_submitted,
         "failed": package.summary.accepted_failed,
+        "remaining_import": remaining_preview,
     }), 201

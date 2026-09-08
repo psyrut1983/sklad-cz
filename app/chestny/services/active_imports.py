@@ -145,6 +145,36 @@ class ActiveImportStore:
                 return True
             return False
 
+    def replace(self, token: str, result: ImportResult) -> str | None:
+        """Atomically replace an import with its unsubmitted remainder.
+
+        The replacement keeps the original profile and expiry deadline, but
+        receives a new token so the already claimed submission cannot be
+        repeated. An empty remainder simply consumes the original import.
+        """
+        with self._lock:
+            active = self.get(token)
+            del self._imports[token]
+            if not result.accepted:
+                return None
+            if len(result.accepted) > 1000:
+                raise ValueError("Превышен лимит принятых строк: 1000")
+
+            new_token = secrets.token_urlsafe(32)
+            while new_token in self._imports:
+                new_token = secrets.token_urlsafe(32)
+            now = self._clock()
+            self._imports[new_token] = ActiveImport(
+                token=new_token,
+                profile_id=active.profile_id,
+                accepted=tuple(result.accepted),
+                excluded=tuple(result.excluded),
+                summary=_build_summary(result),
+                created_at=now,
+                expires_at=active.expires_at,
+            )
+            return new_token
+
     cancel = pop
 
     def clear(self) -> None:

@@ -70,16 +70,24 @@
 
     <div class="dryrun-results" id="dryrun-results" style="display:none">
       <div class="dryrun-summary" id="dryrun-summary"></div>
-      <div class="dryrun-tables" id="dryrun-tables"></div>
-      <div class="settings-form submission-fields">
-        <div class="field"><label for="action-date">Дата вывода из оборота</label><input id="action-date" type="date"></div>
-        <div class="field"><label for="document-number">Номер первичного документа</label><input id="document-number" type="text" maxlength="255"></div>
-        <div class="field"><label for="document-date">Дата первичного документа</label><input id="document-date" type="date"></div>
-        <div class="field"><label for="document-name">Название документа</label><input id="document-name" type="text" maxlength="255" value="Отчёт Wildberries"></div>
-      </div>
-      <div class="dryrun-actions">
-        <button type="button" class="btn btn-secondary" id="cancel-import-btn">Отменить импорт</button>
-        <button type="button" class="btn btn-primary" id="submit-cz-btn">Отправить в Честный Знак</button>
+      <div id="submission-workspace">
+        <div class="selection-toolbar" id="selection-toolbar">
+          <label class="select-all-label"><input type="checkbox" id="select-all-kiz" checked> Все КИЗ</label>
+          <button type="button" class="btn btn-secondary btn-small" id="select-all-btn">Выбрать все</button>
+          <button type="button" class="btn btn-secondary btn-small" id="clear-selection-btn">Снять все</button>
+          <span id="selection-summary">Выбрано: 0</span>
+        </div>
+        <div class="dryrun-tables" id="dryrun-tables"></div>
+        <div class="settings-form submission-fields">
+          <div class="field"><label for="action-date">Дата вывода из оборота</label><input id="action-date" type="date"></div>
+          <div class="field"><label for="document-number">Номер первичного документа</label><input id="document-number" type="text" maxlength="255"></div>
+          <div class="field"><label for="document-date">Дата первичного документа</label><input id="document-date" type="date"></div>
+          <div class="field"><label for="document-name">Название документа</label><input id="document-name" type="text" maxlength="255" value="Отчёт Wildberries"></div>
+        </div>
+        <div class="dryrun-actions">
+          <button type="button" class="btn btn-secondary" id="cancel-import-btn">Отменить импорт</button>
+          <button type="button" class="btn btn-primary" id="submit-cz-btn">Отправить в Честный Знак</button>
+        </div>
       </div>
       <div class="report-section" id="report-section" style="display:none">
         <h3>Результаты отправки</h3>
@@ -89,6 +97,7 @@
           <button type="button" class="btn btn-secondary" id="clear-report-btn">Очистить</button>
         </div>
       </div>
+      <div class="excluded-results" id="excluded-results"></div>
     </div>
   </section>
 </div>

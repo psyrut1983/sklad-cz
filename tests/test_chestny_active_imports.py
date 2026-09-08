@@ -136,6 +136,24 @@ class TestExpiry:
 
 
 class TestCancel:
+    def test_replace_keeps_profile_and_only_remainder(self):
+        s = ActiveImportStore()
+        old = s.create("org-krasikova", _make_result(accepted=3, excluded=1))
+        remainder = _make_result(accepted=2, excluded=0)
+        new = s.replace(old, remainder)
+        assert new and new != old
+        with pytest.raises(NotFoundError):
+            s.get(old)
+        active = s.get(new)
+        assert active.profile_id == "org-krasikova"
+        assert len(active.accepted) == 2
+
+    def test_replace_empty_consumes_import(self):
+        s = ActiveImportStore()
+        old = s.create("org-sinyavin", _make_result(accepted=1, excluded=0))
+        assert s.replace(old, _make_result(accepted=0, excluded=0)) is None
+        assert len(s) == 0
+
     def test_cancel_existing(self):
         s = ActiveImportStore()
         t = s.create("org-sinyavin", _make_result())

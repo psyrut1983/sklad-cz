@@ -197,6 +197,26 @@ class TestSettingsJS:
 
 
 class TestDryRunJS:
+    def test_selected_rows_are_sent_and_saved_per_profile(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "selected_rows: selectedRows" in js
+        assert "selectedRows: []" in js
+        assert "setAllKizSelected" in js
+        assert "remaining_import" in js
+        assert "Вывести выбранные КИЗ" in js
+
+    def test_actionable_rows_render_before_collapsible_exclusions(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "Доступно для вывода" in js
+        assert "renderExcludedRows(data)" in js
+        assert 'details.className = "excluded-details"' in js
+        assert "details.open = data.accepted.length === 0" in js
+        assert 'els.excludedResults.appendChild(details)' in js
+
+    def test_empty_actionable_list_hides_submission_workspace(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert 'els.submissionWorkspace.style.display = data.accepted.length > 0 ? "block" : "none"' in js
+
     """Тесты dry-run JS-логики."""
 
     def test_upload_btn_wired(self, client):
