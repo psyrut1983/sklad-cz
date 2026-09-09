@@ -85,7 +85,7 @@ def _post_preview(client, profile_id="org-sinyavin", **kw) -> tuple:
 
 class TestPreviewSuccess:
     def test_synthetic_counts_and_clean_ki(self, client, app):
-        """Синтетический XLSX → total=10, accepted=4, excluded=6, KI чистые."""
+        """Синтетический XLSX принимает продажи без номера чека и ФН."""
         _configure_profile("org-sinyavin")
         resp, body = _post_preview(client)
         assert resp.status_code == 201
@@ -93,15 +93,18 @@ class TestPreviewSuccess:
         assert body["profile"]["id"] == "org-sinyavin"
         assert body["profile"]["display_name"] == "ИП Синявин"
         assert body["summary"]["total_rows"] == 10
-        assert body["summary"]["accepted"] == 4
-        assert body["summary"]["excluded"] == 6
-        assert len(body["accepted"]) == 4
-        assert len(body["excluded"]) == 6
+        assert body["summary"]["accepted"] == 6
+        assert body["summary"]["excluded"] == 4
+        assert len(body["accepted"]) == 6
+        assert len(body["excluded"]) == 4
         for row in body["accepted"]:
             assert len(row["ki"]) == 31
             assert row["ki"].startswith("01")
         assert "import_token" in body
         assert isinstance(body["expires_in"], int) and body["expires_in"] > 0
+        accepted_by_row = {row["row_index"]: row for row in body["accepted"]}
+        assert accepted_by_row[6]["check_number"] == ""
+        assert accepted_by_row[7]["fn_number"] == ""
 
     def test_accepted_fields_types(self, client, app):
         """accepted: ki str, check str, fn str, cost_kopecks int, date str."""
@@ -125,8 +128,8 @@ class TestPreviewSuccess:
             assert resp.status_code == 201, f"Failed for {pid}"
             assert body["profile"]["id"] == pid
             assert body["profile"]["display_name"] == pname
-            assert body["summary"]["accepted"] == 4
-            assert body["summary"]["excluded"] == 6
+            assert body["summary"]["accepted"] == 6
+            assert body["summary"]["excluded"] == 4
 
             store = app.extensions["active_imports"]
             active = store.get(body["import_token"])
@@ -248,8 +251,8 @@ class TestPreviewErrors:
         resp, body = _post_preview(client)
         assert resp.status_code == 201
 
-        assert body["summary"]["accepted"] == 4
-        assert body["summary"]["excluded"] == 6
+        assert body["summary"]["accepted"] == 6
+        assert body["summary"]["excluded"] == 4
         assert body["summary"]["total_rows"] == 10
 
         dup_excluded = [e for e in body["excluded"]
@@ -486,8 +489,8 @@ class TestIntegration:
                             content_type="multipart/form-data")
         assert resp1.status_code == 201
         b1 = resp1.get_json()
-        assert b1["summary"]["accepted"] == 4
-        assert b1["summary"]["excluded"] == 6
+        assert b1["summary"]["accepted"] == 6
+        assert b1["summary"]["excluded"] == 4
 
         # Второй импорт
         data2 = {
@@ -498,8 +501,8 @@ class TestIntegration:
                             content_type="multipart/form-data")
         assert resp2.status_code == 201
         b2 = resp2.get_json()
-        assert b2["summary"]["accepted"] == 4
-        assert b2["summary"]["excluded"] == 6
+        assert b2["summary"]["accepted"] == 6
+        assert b2["summary"]["excluded"] == 4
         assert b2["import_token"] != b1["import_token"]
 
         # GET для обоих

@@ -18,6 +18,7 @@ from typing import Any
 # ═════════════════════════════════════════════════════════════════════════════
 
 PRODUCTION_API_BASE_URL = "https://markirovka.crpt.ru/api/v3/true-api"
+SANDBOX_API_BASE_URL = "https://markirovka.sandbox.crptech.ru/api/v3/true-api"
 
 
 def _ensure_nonempty_str(val: object, field_name: str) -> str:
@@ -42,6 +43,7 @@ class CredentialsSnapshot:
     inn: str
     certificate_thumbprint: str
     api_base_url: str
+    allow_sandbox: bool = False
 
     def __post_init__(self) -> None:
         # Валидация profile_id
@@ -65,7 +67,7 @@ class CredentialsSnapshot:
 
         # Валидация api_base_url: только production URL, нормализация trailing slash
         url = self.api_base_url.rstrip("/")
-        if url != PRODUCTION_API_BASE_URL:
+        if url != PRODUCTION_API_BASE_URL and not (self.allow_sandbox is True and url == SANDBOX_API_BASE_URL):
             raise ValueError(
                 "Недопустимый api_base_url. Разрешён только production URL "
                 "Честного Знака."

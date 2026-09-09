@@ -9,6 +9,7 @@ instance/
 *.db
 *.db-journal
 *.db.bak
+*.db.before-turnover.bak
 *.sqlite
 *.sqlite3
 

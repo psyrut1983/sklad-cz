@@ -217,6 +217,13 @@ class TestDryRunJS:
         js = client.get("/static/chestny/settings.js").data.decode()
         assert 'els.submissionWorkspace.style.display = data.accepted.length > 0 ? "block" : "none"' in js
 
+    def test_optional_check_and_fn_are_shown_as_dash(self, client):
+        js = client.get("/static/chestny/settings.js").data.decode()
+        assert "Чек (необяз.)" in js
+        assert "ФН (необяз.)" in js
+        assert 'a.check_number || "—"' in js
+        assert 'a.fn_number || "—"' in js
+
     """Тесты dry-run JS-логики."""
 
     def test_upload_btn_wired(self, client):

@@ -122,6 +122,18 @@ def submit_import(token: str):
     except ValueError as exc:
         return jsonify({"code": "invalid_selection", "message": str(exc)}), 400
 
+    # Codes managed by the durable sale/return workflow must not bypass its
+    # reservations and event-history checks through the legacy sale screen.
+    from app.chestny.models import TurnoverEvent
+    from app.chestny.services.dedup import hmac_digest
+    digest_key = load_or_create_hmac_key(current_app.instance_path)
+    if TurnoverEvent.query.filter(
+        TurnoverEvent.profile_id == profile.id,
+        TurnoverEvent.environment == PRODUCTION_API_BASE_URL,
+        TurnoverEvent.code_digest.in_([hmac_digest(r.ki, digest_key) for r in submission.accepted]),
+    ).first():
+        return jsonify(code='use_turnover', message='Для этих кодов используйте раздел «Продажи и возвраты WB»: у них есть история операций'), 409
+
     if not current_app.config.get("TESTING"):
         from app.chestny.services.certificates import (
             CertificateBackendError,

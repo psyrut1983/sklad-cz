@@ -123,7 +123,11 @@ def _normalize(raw: str) -> str:
     Нормализует только безопасные представления разделителей.
     Не логирует полный вход.
     """
-    s = raw.strip(" \t\n\r\x0b\x0c").strip('"')
+    s = raw.strip(" \t\n\r\x0b\x0c")
+    # Only remove an enclosing pair. A trailing quote alone can be the
+    # final character of the serial (or crypto tail), not a CSV wrapper.
+    if s.startswith('"') and s.endswith('"') and len(s) >= 2:
+        s = s[1:-1]
     if not s:
         return s
 

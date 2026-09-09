@@ -203,6 +203,30 @@ class TestPackageItem:
 
 
 class TestCreatePackage:
+    def test_missing_check_and_fn_do_not_block_lk_receipt(
+        self, builder: PackageBuilder, transport: FakeTransport
+    ) -> None:
+        """Фискальные реквизиты WB не являются полями payload LK_RECEIPT."""
+        imp = _make_import(accepted_count=1)
+        optional_metadata_row = replace(
+            imp.accepted[0], check_number="", fn_number=""
+        )
+        imp = replace(imp, accepted=(optional_metadata_row,))
+        transport.set_response(201, {"documentId": "doc-without-fiscal-metadata"})
+
+        package = builder.create(
+            imp, _make_settings(), "2026-09-04", "WB-1", "2026-09-04"
+        )
+
+        assert package.status == CONFIRMED
+        assert package.batches[0].items[0].check == ""
+        assert package.batches[0].items[0].fn == ""
+        outer = transport.requests[0]["json"]
+        inner = json.loads(base64.b64decode(outer["product_document"]))
+        product = inner["products"][0]
+        assert "check" not in product
+        assert "fn" not in product
+
     def test_decimal_cost_is_serialized_as_integer(
         self, builder: PackageBuilder, transport: FakeTransport
     ) -> None:

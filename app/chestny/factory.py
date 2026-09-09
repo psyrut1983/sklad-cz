@@ -95,6 +95,16 @@ def create_cz_app(
     from app.chestny import models  # noqa: F401
 
     with app.app_context():
+        # Additive schema upgrade: snapshot the existing SQLite database once
+        # before creating the durable turnover tables. SQLite backup handles WAL.
+        from sqlalchemy import inspect
+        if not testing and db.engine.dialect.name == 'sqlite' and db.engine.url.database:
+            database = Path(db.engine.url.database)
+            backup = database.with_name(database.name + '.before-turnover.bak')
+            if database.exists() and not inspect(db.engine).has_table('turnover_document') and not backup.exists():
+                import sqlite3
+                with sqlite3.connect(str(database)) as source, sqlite3.connect(str(backup)) as target:
+                    source.backup(target)
         db.create_all()
         _migrate_processed_kiz_to_profile_scope()
         _seed_profiles()
@@ -118,6 +128,9 @@ def create_cz_app(
     app.extensions["cz_signer"] = LegacySigner()
     app.extensions["submission_lock"] = threading.Lock()
     app.extensions["claimed_imports"] = set()
+    app.extensions['turnover_imports'] = {}
+    app.config['TURNOVER_BATCH_SIZE'] = 500
+    app.config['TURNOVER_ENVIRONMENT'] = os.environ.get('CZ_TURNOVER_ENVIRONMENT', 'production')
 
     # ── Cleanup orphaned data on startup ─────────────────────────────────────
     _cleanup_on_startup(app)
@@ -132,6 +145,11 @@ def create_cz_app(
 
     from app.chestny.submit_routes import cz_submit_api
     app.register_blueprint(cz_submit_api)
+    from app.chestny.turnover_routes import turnover
+    app.register_blueprint(turnover)
+    if not testing:
+        from app.chestny.services.turnover_recovery import start_reconciler
+        start_reconciler(app)
 
     # ── Report blueprint ────────────────────────────────────────────────────
     from app.chestny.report_routes import cz_report

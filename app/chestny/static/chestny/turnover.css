@@ -1,0 +1,28 @@
+.container { padding: 28px; margin: 24px auto; }
+[hidden] { display: none !important; }
+h1 { margin: 16px 0; }
+h2 { margin: 30px 0 14px; }
+p { line-height: 1.55; }
+button { padding: 10px 15px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #243244; font: inherit; margin: 4px 3px 4px 0; }
+button:hover:not(:disabled) { background: #edf3ff; border-color: #7999c4; }
+button:disabled { cursor: default; opacity: .5; }
+#submit, #upload { background: #235da9; border-color: #235da9; color: white; }
+input:not([type=checkbox]), select { font: inherit; border: 1px solid #b6c2d2; border-radius: 5px; padding: 8px; background: white; }
+input[type=checkbox] { width: 17px; height: 17px; vertical-align: middle; }
+fieldset { background: #fff; border: 1px solid #d1dae5; border-radius: 10px; }
+legend { font-weight: 600; padding: 0 8px; }
+#environment { padding: 10px 14px; background: #fff3d6; border-left: 4px solid #c9972f; }
+#summary { font-weight: 600; }
+#notice { border-radius: 7px; background: #eaf0f7; }
+#notice:empty { display: none; }
+.scroll { background: white; border-radius: 8px; margin: 16px 0; }
+table { width: 100%; border-collapse: collapse; }
+th { position: sticky; top: 0; background: #eaf0f7; z-index: 1; }
+td { font-size: 14px; }
+article { border-radius: 8px; background: white; }
+a { color: #235da9; }
+@media (max-width: 700px) {
+  .container { padding: 14px; margin: 8px; }
+  fieldset label { display: block; }
+  label input:not([type=checkbox]), label select { display: block; width: 100%; margin-top: 5px; }
+}

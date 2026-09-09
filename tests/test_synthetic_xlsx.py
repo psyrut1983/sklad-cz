@@ -138,8 +138,8 @@ class TestSyntheticXlsxGenerator:
         assert KI_WITH_GS_TEXT in kiz_values, "Нет КИ с GS"
         assert KI_CORRUPTED in kiz_values, "Нет повреждённого КИ"
         assert KI_DUP in kiz_values, "Нет дублирующегося КИ"
-        # 5 уникальных raw-строк (KI_CLEAN встречается в 6 строках)
-        assert len(set(kiz_values)) == 5
+        # 7 уникальных raw-строк, включая продажи без чека и без ФН.
+        assert len(set(kiz_values)) == 7
 
     def test_deterministic(self, tmp_path):
         """Два вызова дают одинаковую логическую структуру (не ZIP-байты).
@@ -174,7 +174,7 @@ class TestSyntheticXlsxGenerator:
         assert stats["empty_fn"] == 1
         assert stats["corrupted_kiz"] == 1
         assert stats["duplicate"] == 1
-        assert stats["valid_sales"] == 4
+        assert stats["valid_sales"] == 6
 
     def test_no_real_xlsx_read(self):
         """Тест не читает реальный XLSX (проверка на уровне теста)."""

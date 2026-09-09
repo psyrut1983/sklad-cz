@@ -10,7 +10,7 @@ excel_import — строгий разбор XLSX Wildberries (лист КИЗ).
   2. Для каждой строки данных:
      a. Тип операции → только "Продажа" (trim); остальное → excluded.
      b. КИЗ → extract_ki (kiz_codec); невалидный → excluded.
-     c. Номер чека, Номер фискального накопителя → непустые после trim.
+     c. Номер чека, Номер фискального накопителя → необязательные метаданные.
      d. Стоимость → Decimal копейки; только RUB, >0.
      e. Дата → ISO "YYYY-MM-DD".
      f. Дубли KI-31 внутри файла → excluded.
@@ -377,25 +377,11 @@ def parse_xlsx(path: str | BinaryIO) -> ImportResult:
                 ))
                 continue
 
-            # ── Номер чека ─────────────────────────────────────────────────
+            # Номер чека и ФН не входят в payload LK_RECEIPT.  Wildberries
+            # заполняет их не для каждой продажи, поэтому сохраняем значения
+            # как необязательные метаданные для интерфейса и отчёта.
             check = _cell_str(cells, HEADER_CHECK_INDEX)
-            if not check:
-                excluded.append(ExcludedRow(
-                    row_index=data_row_index,
-                    reason_code="empty_check",
-                    message="Номер чека не заполнен",
-                ))
-                continue
-
-            # ── Номер фискального накопителя ───────────────────────────────
             fn = _cell_str(cells, HEADER_FN_INDEX)
-            if not fn:
-                excluded.append(ExcludedRow(
-                    row_index=data_row_index,
-                    reason_code="empty_fn",
-                    message="Номер фискального накопителя не заполнен",
-                ))
-                continue
 
             # ── Стоимость ──────────────────────────────────────────────────
             raw_cost = cells[HEADER_COST_INDEX] if len(cells) > HEADER_COST_INDEX else None

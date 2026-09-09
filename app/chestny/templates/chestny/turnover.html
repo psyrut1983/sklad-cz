@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Продажи и возвраты WB</title><link rel="stylesheet" href="/static/chestny/settings.css">
+<link rel="stylesheet" href="/static/chestny/turnover.css">
+<script src="/static/chestny/turnover.js" defer></script>
+<style>.container{max-width:1250px}.scroll{overflow:auto;max-height:500px}td,th{padding:8px;text-align:left;border-bottom:1px solid #ddd}fieldset{margin:18px 0;padding:18px}label{display:inline-block;margin:6px}#notice{white-space:pre-wrap;padding:12px}input,select{max-width:100%}.actions{display:flex;gap:10px;flex-wrap:wrap}button{cursor:pointer}article{padding:12px;border:1px solid #ccc;margin:10px 0}</style>
+</head><body><main class="container">
+<p><a href="/">Настройки профилей и прежний раздел вывода</a></p>
+<h1>Продажи и возвраты Wildberries</h1>
+<p id="environment"></p>
+<p>Загрузите исходный XLSX за любой период. Повторные события проверяются по истории. Коды и сведения об операциях проверяются в Честном знаке перед отправкой.</p>
+<label>Организация <select id="profile"></select></label>
+<label>Файл WB <input id="file" type="file" accept=".xlsx"></label>
+<button id="upload">Загрузить файл</button><p id="summary"></p>
+<div id="notice" role="status" aria-live="polite"></div>
+<section id="workspace" hidden>
+<label>Операция <select id="operation"><option>Возврат</option><option>Продажа</option></select></label>
+<button id="select">Выбрать все показанные</button><button id="ready">Выбрать допущенные ЧЗ</button><button id="clear">Снять выбор</button>
+<p>Если один КИ встречается несколько раз, выберите одно актуальное событие. Дата из файла не заменяет проверку связи с последней продажей.</p>
+<div class="scroll"><table><thead><tr><th>Выбор</th><th>Строка WB</th><th>КИ</th><th>Задание</th><th>Дата</th><th>Чек из WB</th><th>Оплата возврата</th><th>Проверка</th></tr></thead><tbody id="rows"></tbody></table></div>
+<fieldset><legend>Данные для выбранных строк</legend>
+<p id="sale-auto" hidden>Причина вывода: дистанционная продажа. Дата и стоимость берутся из каждой строки WB. Номер документа формируется приложением, наименование — «Отчёт о дистанционных продажах Wildberries». Продажи за разные даты разделяются автоматически.</p>
+<p>Оплата определяется отдельно для каждого возврата: чек и ФН пустые — без оплаты, оба заполнены — после оплаты. Для оплаченного возврата номер чека и дата берутся из строки WB. Оба вида возврата могут входить в один документ.</p>
+<label>Дата события (если отсутствует в файле) <input id="event-date" type="date"></label>
+<label><input id="fact" type="checkbox"> <span id="fact-text">Подтверждаю выбранные события и данные отчёта WB.</span></label>
+</fieldset>
+<p>После проверки ЧЗ заполните данные выбранных строк и нажмите «Предпросмотр документов». После успешной подготовки станет доступна отправка.</p>
+<div class="actions"><button id="check">Проверить выбранные в ЧЗ</button><button id="prepare">Предпросмотр документов</button><button id="submit" aria-describedby="submit-help" disabled>Подписать и отправить</button></div>
+<p id="submit-help" role="status" aria-live="polite">Выберите строки и заполните данные для предпросмотра документов.</p>
+<p id="prepared"></p>
+</section>
+<h2>История и сверка</h2><p>История сохраняется после перезапуска. Обновление списка не отправляет документы повторно. Для проверки статуса нажмите «Сверить».</p>
+<button id="history">Обновить историю</button><div id="documents"></div>
+</main></body></html>

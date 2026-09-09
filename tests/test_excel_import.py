@@ -267,37 +267,54 @@ class TestKizValidation:
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestCheckAndFn:
-    def test_empty_check_excluded(self):
-        """Пустой чек → excluded."""
+    def test_empty_check_accepted(self):
+        """Продажа без номера чека принимается."""
         wb = make_wb(HEADERS)
         add_row(wb["КИЗ"], [1, "STK", KI_CLEAN, "", 100, "RUB", "FN",
                             datetime.date(2026, 9, 1), "Продажа", "-"])
         result = _save_and_parse(wb)
-        assert result.excluded[0].reason_code == "empty_check"
+        assert result.summary.accepted == 1
+        assert result.summary.excluded == 0
+        assert result.accepted[0].check_number == ""
 
-    def test_whitespace_check_excluded(self):
-        """Пробельный чек → excluded."""
+    def test_whitespace_check_normalized_to_empty(self):
+        """Пробельный номер чека нормализуется в пустое значение."""
         wb = make_wb(HEADERS)
         add_row(wb["КИЗ"], [1, "STK", KI_CLEAN, "   ", 100, "RUB", "FN",
                             datetime.date(2026, 9, 1), "Продажа", "-"])
         result = _save_and_parse(wb)
-        assert result.excluded[0].reason_code == "empty_check"
+        assert result.summary.accepted == 1
+        assert result.accepted[0].check_number == ""
 
-    def test_empty_fn_excluded(self):
-        """Пустой ФН → excluded."""
+    def test_empty_fn_accepted(self):
+        """Продажа без номера ФН принимается."""
         wb = make_wb(HEADERS)
         add_row(wb["КИЗ"], [1, "STK", KI_CLEAN, "CHK", 100, "RUB", "",
                             datetime.date(2026, 9, 1), "Продажа", "-"])
         result = _save_and_parse(wb)
-        assert result.excluded[0].reason_code == "empty_fn"
+        assert result.summary.accepted == 1
+        assert result.summary.excluded == 0
+        assert result.accepted[0].fn_number == ""
 
-    def test_whitespace_fn_excluded(self):
-        """Пробельный ФН → excluded."""
+    def test_whitespace_fn_normalized_to_empty(self):
+        """Пробельный номер ФН нормализуется в пустое значение."""
         wb = make_wb(HEADERS)
         add_row(wb["КИЗ"], [1, "STK", KI_CLEAN, "CHK", 100, "RUB", "  ",
                             datetime.date(2026, 9, 1), "Продажа", "-"])
         result = _save_and_parse(wb)
-        assert result.excluded[0].reason_code == "empty_fn"
+        assert result.summary.accepted == 1
+        assert result.accepted[0].fn_number == ""
+
+    def test_empty_check_and_fn_accepted(self):
+        """Продажа без обоих фискальных реквизитов принимается."""
+        wb = make_wb(HEADERS)
+        add_row(wb["КИЗ"], [1, "STK", KI_CLEAN, "", 100, "RUB", "",
+                            datetime.date(2026, 9, 1), "Продажа", "-"])
+        result = _save_and_parse(wb)
+        assert result.summary.accepted == 1
+        assert result.summary.excluded == 0
+        assert result.accepted[0].check_number == ""
+        assert result.accepted[0].fn_number == ""
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -641,8 +658,8 @@ class TestDuplicateKi:
         assert result.summary.excluded == 1
         assert result.excluded[0].reason_code == "duplicate_in_file"
 
-    def test_excluded_check_does_not_occupy_seen(self):
-        """КИ из строки, исключённой из-за empty check, НЕ занимает seen-set."""
+    def test_empty_check_sale_occupies_seen(self):
+        """Принятая продажа без чека участвует в поиске дублей."""
         wb = make_wb(HEADERS)
         add_row(wb["КИЗ"], [1, "STK", KI_CLEAN, "", 100, "RUB", "FN",
                             datetime.date(2026, 9, 1), "Продажа", "-"])
@@ -651,11 +668,12 @@ class TestDuplicateKi:
         result = _save_and_parse(wb)
         assert result.summary.accepted == 1
         assert result.summary.excluded == 1
-        assert result.excluded[0].reason_code == "empty_check"
+        assert result.excluded[0].reason_code == "duplicate_in_file"
         assert result.accepted[0].ki == KI_CLEAN
+        assert result.accepted[0].check_number == ""
 
-    def test_excluded_fn_does_not_occupy_seen(self):
-        """КИ из строки, исключённой из-за empty FN, НЕ занимает seen-set."""
+    def test_empty_fn_sale_occupies_seen(self):
+        """Принятая продажа без ФН участвует в поиске дублей."""
         wb = make_wb(HEADERS)
         add_row(wb["КИЗ"], [1, "STK", KI_CLEAN, "CHK", 100, "RUB", "",
                             datetime.date(2026, 9, 1), "Продажа", "-"])
@@ -664,8 +682,9 @@ class TestDuplicateKi:
         result = _save_and_parse(wb)
         assert result.summary.accepted == 1
         assert result.summary.excluded == 1
-        assert result.excluded[0].reason_code == "empty_fn"
+        assert result.excluded[0].reason_code == "duplicate_in_file"
         assert result.accepted[0].ki == KI_CLEAN
+        assert result.accepted[0].fn_number == ""
 
     def test_excluded_cost_does_not_occupy_seen(self):
         """КИ из строки, исключённой из-за invalid cost, НЕ занимает seen-set."""
@@ -752,20 +771,21 @@ class TestSyntheticFixture:
     """Парсинг полной синтетической фикстуры."""
 
     def test_parse_synthetic_fixture(self, tmp_path):
-        """Полный разбор synthetic_xlsx: total_rows=10, accepted=4, excluded=6, точный by_reason."""
+        """Полный разбор: продажи без чека/ФН также принимаются."""
         path = create_synthetic_xlsx(os.path.join(tmp_path, "synth.xlsx"))
         result = parse_xlsx(path)
         assert result.summary.total_rows == 10
-        assert result.summary.accepted == 4
-        assert result.summary.excluded == 6
+        assert result.summary.accepted == 6
+        assert result.summary.excluded == 4
         assert result.summary.by_reason == {
             "return_operation": 1,
             "dash_operation": 1,
-            "empty_check": 1,
-            "empty_fn": 1,
             "invalid_kiz": 1,
             "duplicate_in_file": 1,
         }
+        rows = {row.row_index: row for row in result.accepted}
+        assert rows[6].check_number == ""
+        assert rows[7].fn_number == ""
 
     def test_bytesio_input(self):
         """Передача BytesIO вместо пути → корректный разбор."""
@@ -776,7 +796,7 @@ class TestSyntheticFixture:
         buf = io.BytesIO(data)
         result = parse_xlsx(buf)
         assert result.summary.total_rows == 10
-        assert result.summary.accepted == 4
+        assert result.summary.accepted == 6
 
     def test_deterministic_result(self, tmp_path):
         """Два одинаковых файла → идентичный результат."""

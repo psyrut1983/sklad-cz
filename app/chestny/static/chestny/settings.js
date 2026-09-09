@@ -523,7 +523,7 @@ function showDryRun(data) {
     selectTh.className = "kiz-checkbox-cell";
     selectTh.textContent = "✓";
     acHeadRow.appendChild(selectTh);
-    var acThs = ["Строка", "КИ", "Чек", "ФН", "Сумма (коп)", "Дата"];
+    var acThs = ["Строка", "КИ", "Чек (необяз.)", "ФН (необяз.)", "Сумма (коп)", "Дата"];
     for (var j = 0; j < acThs.length; j++) {
       var th = document.createElement("th");
       th.textContent = acThs[j];
@@ -547,7 +547,7 @@ function showDryRun(data) {
       checkbox.addEventListener("change", updateSelection);
       selectTd.appendChild(checkbox);
       acRow.appendChild(selectTd);
-      var fields = [String(a.row_index), a.ki, a.check_number, a.fn_number, String(a.cost_kopecks), a.date];
+      var fields = [String(a.row_index), a.ki, a.check_number || "—", a.fn_number || "—", String(a.cost_kopecks), a.date];
       for (var f = 0; f < fields.length; f++) {
         var td = document.createElement("td");
         td.textContent = fields[f];

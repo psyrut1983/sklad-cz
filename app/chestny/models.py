@@ -12,6 +12,60 @@ from datetime import datetime, timezone
 from app.chestny.factory import db
 
 
+class TurnoverDocument(db.Model):
+    """Durable submission intent; no signed body or raw codes."""
+    __tablename__ = 'turnover_document'
+    id = db.Column(db.String(36), primary_key=True)
+    profile_id = db.Column(db.String(50), nullable=False, index=True)
+    environment = db.Column(db.String(200), nullable=False)
+    inn = db.Column(db.String(12), nullable=False)
+    operation = db.Column(db.String(20), nullable=False)
+    state = db.Column(db.String(24), nullable=False, default='PREPARED')
+    document_id = db.Column(db.String(128))
+    payload_digest = db.Column(db.String(64), nullable=False)
+    message = db.Column(db.String(500), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    items = db.relationship('TurnoverEvent', backref='document', lazy='select')
+
+
+class TurnoverEvent(db.Model):
+    """One WB event in a code's history; reservations survive process failure."""
+    __tablename__ = 'turnover_event'
+    id = db.Column(db.Integer, primary_key=True)
+    document_key = db.Column(db.String(36), db.ForeignKey('turnover_document.id'), nullable=False)
+    profile_id = db.Column(db.String(50), nullable=False)
+    environment = db.Column(db.String(200), nullable=False)
+    code_digest = db.Column(db.String(64), nullable=False, index=True)
+    event_digest = db.Column(db.String(64), nullable=False)
+    mask = db.Column(db.String(20), nullable=False)
+    operation = db.Column(db.String(20), nullable=False)
+    state = db.Column(db.String(24), nullable=False)
+    active_key = db.Column(db.String(64), unique=True, nullable=True)
+    previous_id = db.Column(db.Integer, nullable=True)
+    cycle = db.Column(db.Integer, nullable=False, default=1)
+    source = db.Column(db.String(12), nullable=False)
+    event_date = db.Column(db.String(10), nullable=False)
+    row_index = db.Column(db.Integer, nullable=False)
+    paid = db.Column(db.Boolean, nullable=True)
+    confirmed_at = db.Column(db.DateTime, nullable=True)
+    __table_args__ = (db.UniqueConstraint('profile_id', 'environment', 'event_digest',
+                                         name='uq_turnover_event'),)
+
+
+class TurnoverObservation(db.Model):
+    """Last independently observed code state, never a fabricated submission."""
+    __tablename__ = 'turnover_observation'
+    id = db.Column(db.Integer, primary_key=True)
+    profile_id = db.Column(db.String(50), nullable=False)
+    environment = db.Column(db.String(200), nullable=False)
+    code_digest = db.Column(db.String(64), nullable=False)
+    state = db.Column(db.String(32), nullable=False)
+    decision = db.Column(db.String(32), nullable=False)
+    checked_at = db.Column(db.DateTime, nullable=False)
+    __table_args__ = (db.UniqueConstraint('profile_id', 'environment', 'code_digest',
+                                         name='uq_turnover_observation'),)
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 #  OrganizationProfile
 # ═════════════════════════════════════════════════════════════════════════════
