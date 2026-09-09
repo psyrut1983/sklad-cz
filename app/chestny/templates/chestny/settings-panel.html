@@ -1,0 +1,42 @@
+  <section aria-labelledby="profile-heading">
+    <h2 id="profile-heading">Реквизиты и электронная подпись</h2>
+    <div hidden class="profile-tabs" role="tablist" aria-label="Выбор профиля">
+      <button type="button" role="tab" class="profile-btn active" data-profile="org-sinyavin" aria-selected="true">ИП Синявин</button>
+      <button type="button" role="tab" class="profile-btn" data-profile="org-krasikova" aria-selected="false">ИП Красикова</button>
+    </div>
+
+    <form id="settings-form" class="settings-form">
+      <div class="field">
+        <label for="inn">ИНН</label>
+        <input id="inn" name="inn" type="text" maxlength="12" inputmode="numeric" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="fias-id">ФИАС ID места деятельности</label>
+        <input id="fias-id" name="fias_id" type="text" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="certificate">Сертификат</label>
+        <select id="certificate" name="certificate_thumbprint">
+          <option value="">— выберите сертификат —</option>
+        </select>
+      </div>
+      <div class="field readonly">
+        <label>Товарная группа</label>
+        <span class="readonly-value">lp — Лёгкая промышленность</span>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">Сохранить настройки</button>
+        <button type="button" class="btn btn-secondary" id="refresh-certs">Обновить сертификаты</button>
+        <button type="button" class="btn btn-secondary" id="check-cert">Проверить сертификат</button>
+      </div>
+    </form>
+
+    <div class="status-area" aria-live="polite" id="status-area"></div>
+    <div class="error-area" aria-live="assertive" id="error-area"></div>
+  </section>
+
+  <div class="notice">
+    <p>Приложение не запрашивает и не хранит PIN и закрытые ключи сертификатов. Подпись выполняется через установленное криптопровайдерное ПО.</p>
+  </div>
+

@@ -1,0 +1,16 @@
+<section id="workspace" hidden>
+<label hidden>Операция <select id="operation"><option>Возврат</option><option>Продажа</option></select></label>
+<div class="operation-tabs" aria-label="Операция"><button type="button" data-operation="Возврат" aria-pressed="true">Возвраты · ввод в оборот</button><button type="button" data-operation="Продажа" aria-pressed="false">Продажи · вывод из оборота</button></div><div class="selection-actions"><button id="select">Выбрать все показанные</button><button id="ready">Выбрать допущенные ЧЗ</button><button id="clear">Снять выбор</button><span id="selected-count" aria-live="polite"></span></div>
+<p>Если один КИ встречается несколько раз, выберите одно актуальное событие. Дата из файла не заменяет проверку связи с последней продажей.</p>
+<div class="scroll"><table><thead><tr><th>Выбор</th><th>Строка WB</th><th>КИ</th><th>Задание</th><th>Дата</th><th>Чек из WB</th><th>Оплата возврата</th><th>Проверка</th></tr></thead><tbody id="rows"></tbody></table></div>
+<fieldset><legend>Данные для выбранных строк</legend>
+<p id="sale-auto" hidden>Причина вывода: дистанционная продажа. Дата и стоимость берутся из каждой строки WB. Номер документа формируется приложением, наименование — «Отчёт о дистанционных продажах Wildberries». Продажи за разные даты разделяются автоматически.</p>
+<p id="return-auto">Оплата определяется отдельно для каждого возврата: чек и ФН пустые — без оплаты, оба заполнены — после оплаты. Для оплаченного возврата номер чека и дата берутся из строки WB. Оба вида возврата могут входить в один документ.</p>
+<label>Дата события (если отсутствует в файле) <input id="event-date" type="date"></label>
+<label><input id="fact" type="checkbox"> <span id="fact-text">Подтверждаю выбранные события и данные отчёта WB.</span></label>
+</fieldset>
+<p>После проверки ЧЗ заполните данные выбранных строк и нажмите «Предпросмотр документов». После успешной подготовки станет доступна отправка.</p>
+<div class="actions"><button id="check">Проверить выбранные в ЧЗ</button><button id="prepare">Предпросмотр документов</button><button id="submit" aria-describedby="submit-help" disabled>Подписать и отправить</button></div>
+<p id="submit-help" role="status" aria-live="polite">Выберите строки и заполните данные для предпросмотра документов.</p>
+<p id="prepared"></p>
+</section>

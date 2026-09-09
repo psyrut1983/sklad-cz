@@ -21,12 +21,14 @@
   function fieldsVisibility() {
     const sale = $('operation').value === 'Продажа';
     $('sale-auto').hidden = !sale;
+    if ($('return-auto')) $('return-auto').hidden = sale;
     $('fact-text').textContent = sale
       ? 'Подтверждаю выбранные дистанционные продажи и данные отчёта WB.'
       : 'Подтверждаю факт выбранных возвратов, их соответствие последней продаже и сохранность маркировки. Указанные дата, оплата и документы проверены.';
   }
   function updateReadiness() {
     const data = payload(), fields = data.defaults;
+    if ($('selected-count')) $('selected-count').textContent = `Выбрано: ${data.selected_rows.length}`;
     const missing = [];
     if (!data.selected_rows.length) missing.push('выберите строки для обработки');
     if (events.some(e => data.selected_rows.includes(e.row_index) && e.operation === 'Возврат' && e.paid === null)) missing.push('уточните строки с неполными реквизитами чека');
@@ -64,8 +66,14 @@
     resetReview();
   }
   async function history() {
+    $('documents').replaceChildren();
     const body = await api('/api/turnover/documents?profile_id=' + encodeURIComponent($('profile').value), undefined, 'GET');
     $('documents').replaceChildren();
+    if (!body.documents.length) {
+      const empty = document.createElement('p'); empty.className = 'empty-history';
+      empty.textContent = 'Документов продаж и возвратов для этого профиля пока нет.';
+      $('documents').append(empty);
+    }
     for (const doc of body.documents) {
       const article = document.createElement('article');
       const text = document.createElement('p');
@@ -103,8 +111,10 @@
   async function run(fn) {
     if (busy) return;
     busy = true; notice('Выполняется…');
-    try { await fn(); notice('Готово'); } catch (error) { notice(error.message); }
-    finally { busy = false; }
+    $('notice').dataset.error = 'false';
+    document.dispatchEvent(new CustomEvent('turnover-ui-busy', {detail: true}));
+    try { await fn(); notice('Готово'); } catch (error) { $('notice').dataset.error = 'true'; notice(error.message); }
+    finally { busy = false; document.dispatchEvent(new CustomEvent('turnover-ui-busy', {detail: false})); }
   }
   $('upload').onclick = () => run(async () => {
     const file = $('file').files[0]; if (!file) throw new Error('Выберите XLSX');

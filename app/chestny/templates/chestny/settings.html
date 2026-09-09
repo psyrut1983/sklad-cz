@@ -1,106 +1,11 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Вывод КИЗ из оборота</title>
-<link rel="stylesheet" href="/static/chestny/settings.css">
-<script src="{{ url_for('static', filename='chestny/settings.js') }}" defer></script>
-</head>
-<body>
-<div class="container">
-  <h1>Вывод КИЗ из оборота</h1>
-  <p><a href="/turnover">Продажи и возвраты WB — проверка ЧЗ и история операций</a></p>
-
-  <section aria-labelledby="profile-heading">
-    <h2 id="profile-heading">Профиль</h2>
-    <div class="profile-tabs" role="tablist" aria-label="Выбор профиля">
-      <button type="button" role="tab" class="profile-btn active" data-profile="org-sinyavin" aria-selected="true">ИП Синявин</button>
-      <button type="button" role="tab" class="profile-btn" data-profile="org-krasikova" aria-selected="false">ИП Красикова</button>
-    </div>
-
-    <form id="settings-form" class="settings-form">
-      <div class="field">
-        <label for="inn">ИНН</label>
-        <input id="inn" name="inn" type="text" maxlength="12" inputmode="numeric" autocomplete="off">
-      </div>
-      <div class="field">
-        <label for="fias-id">FIAS ID</label>
-        <input id="fias-id" name="fias_id" type="text" autocomplete="off">
-      </div>
-      <div class="field">
-        <label for="certificate">Сертификат</label>
-        <select id="certificate" name="certificate_thumbprint">
-          <option value="">— выберите сертификат —</option>
-        </select>
-      </div>
-      <div class="field readonly">
-        <label>Товарная группа</label>
-        <span class="readonly-value">lp — Лёгкая промышленность</span>
-      </div>
-
-      <div class="actions">
-        <button type="submit" class="btn btn-primary">Сохранить настройки</button>
-        <button type="button" class="btn btn-secondary" id="refresh-certs">Обновить сертификаты</button>
-        <button type="button" class="btn btn-secondary" id="check-cert">Проверить сертификат</button>
-      </div>
-    </form>
-
-    <div class="status-area" aria-live="polite" id="status-area"></div>
-    <div class="error-area" aria-live="assertive" id="error-area"></div>
-  </section>
-
-  <div class="notice">
-    <p>Приложение не запрашивает и не хранит PIN и закрытые ключи сертификатов. Подпись выполняется через установленное криптопровайдерное ПО.</p>
-  </div>
-
-  <section aria-labelledby="upload-heading" id="upload-section" class="upload-section">
-    <h2 id="upload-heading">Загрузка Excel</h2>
-    <p class="gate-note" id="gate-note">Доступно после настройки профиля и проверки сертификата.</p>
-
-    <div class="upload-controls" id="upload-controls" style="display:none">
-      <input type="file" id="file-input" accept=".xlsx">
-      <button type="button" class="btn btn-primary" id="upload-btn">Проверить файл</button>
-    </div>
-
-    <div class="upload-busy" id="upload-busy" style="display:none">
-      <span class="spinner"></span> Проверка файла…
-    </div>
-
-    <div class="upload-error" id="upload-error" style="display:none"></div>
-
-    <div class="dryrun-results" id="dryrun-results" style="display:none">
-      <div class="dryrun-summary" id="dryrun-summary"></div>
-      <div id="submission-workspace">
-        <div class="selection-toolbar" id="selection-toolbar">
-          <label class="select-all-label"><input type="checkbox" id="select-all-kiz" checked> Все КИЗ</label>
-          <button type="button" class="btn btn-secondary btn-small" id="select-all-btn">Выбрать все</button>
-          <button type="button" class="btn btn-secondary btn-small" id="clear-selection-btn">Снять все</button>
-          <span id="selection-summary">Выбрано: 0</span>
-        </div>
-        <div class="dryrun-tables" id="dryrun-tables"></div>
-        <div class="settings-form submission-fields">
-          <div class="field"><label for="action-date">Дата вывода из оборота</label><input id="action-date" type="date"></div>
-          <div class="field"><label for="document-number">Номер первичного документа</label><input id="document-number" type="text" maxlength="255"></div>
-          <div class="field"><label for="document-date">Дата первичного документа</label><input id="document-date" type="date"></div>
-          <div class="field"><label for="document-name">Название документа</label><input id="document-name" type="text" maxlength="255" value="Отчёт Wildberries"></div>
-        </div>
-        <div class="dryrun-actions">
-          <button type="button" class="btn btn-secondary" id="cancel-import-btn">Отменить импорт</button>
-          <button type="button" class="btn btn-primary" id="submit-cz-btn">Отправить в Честный Знак</button>
-        </div>
-      </div>
-      <div class="report-section" id="report-section" style="display:none">
-        <h3>Результаты отправки</h3>
-        <div id="report-summary"></div>
-        <div class="report-actions">
-          <button type="button" class="btn btn-primary" id="show-report-btn">Посмотреть отчёт</button>
-          <button type="button" class="btn btn-secondary" id="clear-report-btn">Очистить</button>
-        </div>
-      </div>
-      <div class="excluded-results" id="excluded-results"></div>
-    </div>
-  </section>
-</div>
-</body>
-</html>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Маркировка — Wildberries</title>
+<link rel="stylesheet" href="/static/chestny/settings.css"><link rel="stylesheet" href="/static/chestny/app-shell.css">
+<script src="/static/chestny/settings.js" defer></script><script src="/static/chestny/turnover.js" defer></script><script src="/static/chestny/app-shell.js" defer></script></head>
+<body><div class="app-shell"><header class="app-header"><div class="brand"><b>К</b> Маркировка <small>/ Wildberries</small></div><span>Продажи, возвраты и электронная подпись</span></header>
+<nav class="app-nav" aria-label="Разделы приложения"><button data-page="work" aria-pressed="true">Продажи и возвраты</button><button data-page="history" aria-pressed="false">История документов</button><button data-page="settings" aria-pressed="false">Настройки</button></nav>
+<div class="profile-bar"><label for="profile">Активный профиль</label><select id="profile"></select><p id="environment"></p></div><div id="notice" role="status" aria-live="polite"></div>
+<main class="container"><section data-panel="work"><div class="page-heading"><h1>Продажи и возвраты</h1><p>Загрузите отчёт Wildberries и выберите операции для обработки.</p></div><ol class="workflow-steps"><li>1 · Отчёт WB</li><li>2 · Проверка КИЗов</li><li>3 · Предпросмотр</li><li>4 · Отправка и сверка</li></ol>
+<div class="work-surface"><div class="file-bar"><label for="file">Отчёт Wildberries <input id="file" type="file" accept=".xlsx"></label><button id="upload" class="btn-primary">Загрузить файл</button></div><p id="summary"></p>{% include 'chestny/work-panel.html' %}</div></section>
+<section data-panel="history" hidden><div class="page-heading"><h1>История документов</h1><p>Отправки выбранного профиля. Для проверки результата в ЧЗ нажмите «Сверить».</p></div><button id="history">Обновить историю</button><div id="documents"></div>{% include 'chestny/legacy-report.html' %}</section>
+<section data-panel="settings" hidden><div class="page-heading"><h1>Настройки</h1><p>Реквизиты и сертификат активного профиля.</p></div>{% include 'chestny/settings-panel.html' %}</section>
+{% include 'chestny/legacy-controls.html' %}</main></div></body></html>
