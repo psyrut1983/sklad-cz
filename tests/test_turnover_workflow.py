@@ -100,7 +100,7 @@ def test_return_without_history_then_sale_return(setup):
     returned = send(client, upload(client, 'Возврат', 'order2'))
     fake.status = 'INTRODUCED'
     assert reconcile(client, returned)['state'] == 'CONFIRMED'
-    assert returned['items'][0]['cycle'] == 2
+    assert returned['items'][0]['cycle'] == 1
     with app.app_context():
         assert TurnoverEvent.query.count() == 3
 
@@ -153,28 +153,47 @@ def test_sale_preview_multiple_dates_without_manual_document_fields(setup):
     assert not fake.sent
 
 
-def test_old_report_does_not_return_new_sale(setup):
+def test_old_report_can_be_retried_when_crpt_current_state_allows_it(setup):
     _, client, fake = setup
     doc = send(client, upload(client)); fake.status = 'INTRODUCED'; reconcile(client, doc)
     sale = send(client, upload(client, 'Продажа', 'order2')); fake.status = 'RETIRED'; reconcile(client, sale)
     old = upload(client)
     response = client.post(f'/api/turnover/import/{old}/submit', json=payload())
-    assert response.status_code == 400
+    assert response.status_code == 201
+    assert len(fake.sent) == 3
+
+
+def test_local_sale_history_never_overrides_current_crpt_status(setup):
+    _, client, fake = setup
+    fake.status = 'INTRODUCED'
+    send(client, upload(client, 'Продажа', 'order1'))
+
+    token = upload(client, 'Продажа', 'order1')
+    checked = client.post(f'/api/turnover/import/{token}/check',
+                          json={'selected_rows': [1]})
+    assert checked.status_code == 200
+    assert checked.get_json()['rows'][0]['state'] == 'READY'
+
+    repeated = client.post(f'/api/turnover/import/{token}/submit', json=dict(
+        selected_rows=[1], confirmed=True, defaults=dict(event_confirmed=True)))
+    assert repeated.status_code == 201, repeated.get_json()
     assert len(fake.sent) == 2
 
 
-def test_unknown_keeps_durable_reservation_after_restart(setup, tmp_path):
+def test_unknown_local_document_does_not_block_retry_when_crpt_allows(setup, tmp_path):
     app, client, fake = setup; fake.fail = True
     doc = send(client, upload(client))
     assert doc['state'] == 'UNKNOWN'
     with app.app_context():
-        assert TurnoverEvent.query.first().active_key
+        assert TurnoverEvent.query.first().active_key is None
     another = create_cz_app(instance_path=str(tmp_path), testing=True)
     another.extensions['turnover_client_factory'] = lambda p: fake
+    another.extensions['cz_signer'] = Signer()
     second = another.test_client()
     token = upload(second)
+    fake.fail = False
     response = second.post(f'/api/turnover/import/{token}/submit', json=payload())
-    assert response.status_code == 400
+    assert response.status_code == 201, response.get_json()
 
 
 def test_payment_unknown_cannot_sign(setup):
@@ -192,7 +211,7 @@ def test_document_error_is_not_confirmation(setup):
     doc = send(client, upload(client)); fake.status = 'INTRODUCED'; fake.doc_status = 'CHECKED_NOT_OK'
     assert reconcile(client, doc)['state'] == 'UNKNOWN'
     with app.app_context():
-        assert TurnoverEvent.query.first().active_key
+        assert TurnoverEvent.query.first().active_key is None
 
 
 def test_already_introduced_is_not_sent(setup):
@@ -244,7 +263,7 @@ def test_batch_limit_and_untransmitted_cancellation(setup):
     assert client.post('/api/turnover/documents/' + docs[1]['id'] + '/cancel-unsent', json={}).status_code == 200
     with app.app_context():
         items = TurnoverEvent.query.order_by(TurnoverEvent.id).all()
-        assert items[0].active_key and items[1].active_key is None
+        assert all(item.active_key is None for item in items)
 
 
 def test_paid_and_unpaid_can_share_document(setup):
@@ -280,14 +299,14 @@ def test_recovery_and_report(setup):
     book.close()
 
 
-def test_check_records_external_observation(setup):
+def test_check_uses_crpt_without_recording_local_code_state(setup):
     app, client, fake = setup; fake.status = 'INTRODUCED'
     token = upload(client)
     response = client.post(f'/api/turnover/import/{token}/check', json={'selected_rows':[1]})
     assert response.get_json()['rows'][0]['state'] == 'ALREADY'
     from app.chestny.models import TurnoverObservation
     with app.app_context():
-        assert TurnoverObservation.query.first().state == 'INTRODUCED'
+        assert TurnoverObservation.query.first() is None
         assert TurnoverEvent.query.count() == 0
 
 

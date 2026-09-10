@@ -12,10 +12,8 @@ import time
 from uuid import uuid4
 
 from flask import Blueprint, current_app, jsonify, request, render_template, send_file
-from sqlalchemy.exc import IntegrityError
-
 from app.chestny.factory import db
-from app.chestny.models import OrganizationProfile, ProcessedKiz, TurnoverDocument, TurnoverEvent, TurnoverObservation
+from app.chestny.models import OrganizationProfile, TurnoverDocument, TurnoverEvent
 from app.chestny.services.cz_auth import CredentialsSnapshot, PRODUCTION_API_BASE_URL, SANDBOX_API_BASE_URL
 from app.chestny.services.dedup import load_or_create_hmac_key, hmac_digest, mask_ki
 from app.chestny.services.return_packaging import build_return_document
@@ -23,7 +21,6 @@ from app.chestny.services.turnover_client import TurnoverClient, eligibility
 from app.services.wb_events import parse_wb_events
 
 turnover = Blueprint('turnover', __name__)
-ACTIVE = ('SENDING', 'SENT', 'UNKNOWN', 'VERIFYING')
 
 
 def dumps(value):
@@ -107,32 +104,13 @@ def selection(session, data):
     return events
 
 
-def local_status(event, profile):
-    digest = hmac_digest(event.ki, key())
-    past = TurnoverEvent.query.filter_by(profile_id=profile.id,
-        environment=api_base(), code_digest=digest).order_by(TurnoverEvent.id.desc()).first()
-    same = TurnoverEvent.query.filter_by(profile_id=profile.id,
-        environment=api_base(), event_digest=event.fingerprint(key())).first()
-    busy = TurnoverEvent.query.filter_by(profile_id=profile.id,
-        environment=api_base(), code_digest=digest).filter(
-            TurnoverEvent.active_key.isnot(None)).first()
-    legacy = ProcessedKiz.query.filter_by(profile_id=profile.id, hmac_digest=digest).first()
-    return past, same, busy, legacy
-
-
 def inspect_events(events, profile, infos):
     output = []
     for event in events:
-        past, same, busy, legacy = local_status(event, profile)
         state, message = eligibility(infos.get(event.ki), profile.inn, event.operation)
         if event.legal_entity.lower() not in ('', 'нет', 'false', '0'):
             state, message = 'BLOCKED', 'Продажа юрлицу требует отдельного сценария проверки'
-        if same:
-            state, message = 'DUPLICATE', 'Событие уже зарегистрировано: ' + same.state
-        elif busy:
-            state, message = 'BLOCKED', 'Предыдущая операция требует завершения или сверки'
-        output.append(dict(row_index=event.row_index, state=state, message=message,
-                           local_history=bool(past or legacy)))
+        output.append(dict(row_index=event.row_index, state=state, message=message))
     return output
 
 
@@ -189,19 +167,6 @@ def check(token):
     except Exception:
         return jsonify(message='Не удалось проверить ЧЗ. Отправка недоступна; повторите проверку'), 503
     rows = inspect_events(events, profile, infos)
-    for event, decision in zip(events, rows):
-        digest = hmac_digest(event.ki, key())
-        observation = TurnoverObservation.query.filter_by(profile_id=profile.id,
-            environment=api_base(), code_digest=digest).first()
-        if observation is None:
-            observation = TurnoverObservation(profile_id=profile.id,
-                environment=api_base(), code_digest=digest)
-            db.session.add(observation)
-        raw_status = infos.get(event.ki, {}).get('status')
-        observation.state = raw_status if raw_status in ('RETIRED', 'INTRODUCED', 'APPLIED', 'EMITTED') else 'UNKNOWN'
-        observation.decision = decision['state']
-        observation.checked_at = datetime.now(timezone.utc)
-    db.session.commit()
     return jsonify(rows=rows)
 
 
@@ -283,12 +248,6 @@ def body_for(profile, events, fields):
 def prepare(session, profile, data):
     events = selection(session, data)
     fields = {e.row_index: event_fields(e, data) for e in events}
-    for e in events:
-        past, same, busy, _ = local_status(e, profile)
-        if same or busy:
-            raise ValueError('Есть повторное событие или незавершённая операция. Обновите проверку')
-        if past and fields[e.row_index]['event_date'] < past.event_date:
-            raise ValueError('Событие старше уже зарегистрированной операции. Требуется сверка')
     groups = defaultdict(list)
     for event in events:
         f = fields[event.row_index]
@@ -358,23 +317,18 @@ def submit(token):
                 state='PREPARED', payload_digest=body_digest(body))
             db.session.add(doc)
             for event in chunk:
-                past, _, _, legacy = local_status(event, profile)
                 digest = hmac_digest(event.ki, key())
-                lock_id = hmac.new(key(), f'{profile.id}:{api_base()}:{digest}'.encode(), hashlib.sha256).hexdigest()
+                history_digest = hmac.new(
+                    key(), f'{event.fingerprint(key())}:{doc.id}'.encode(), hashlib.sha256
+                ).hexdigest()
                 db.session.add(TurnoverEvent(document_key=doc.id, profile_id=profile.id,
                     environment=api_base(), code_digest=digest,
-                    event_digest=event.fingerprint(key()), mask=mask_ki(event.ki),
-                    operation=event.operation, state='PREPARED', active_key=lock_id,
-                    previous_id=past.id if past else None,
-                    cycle=(past.cycle + (event.operation == 'Продажа' and past.operation == 'Возврат')) if past else 1,
-                    source='LOCAL' if past or legacy else 'CRPT', event_date=fields[event.row_index]['event_date'],
+                    event_digest=history_digest, mask=mask_ki(event.ki),
+                    operation=event.operation, state='PREPARED', active_key=None,
+                    previous_id=None, cycle=1, source='CRPT', event_date=fields[event.row_index]['event_date'],
                     row_index=event.row_index, paid=fields[event.row_index].get('paid') if event.operation == 'Возврат' else None))
             prepared.append((doc, envelope))
-        try:
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
-            return jsonify(message='Код или событие уже зарезервированы другой отправкой'), 409
+        db.session.commit()
         code_by_digest = {hmac_digest(e.ki, key()): e.ki for e in events}
         for doc, envelope in prepared:
             # Signing a large upload can take time. Refresh each batch's code

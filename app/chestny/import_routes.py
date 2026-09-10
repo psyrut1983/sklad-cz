@@ -18,11 +18,6 @@ from app.chestny.services.active_imports import (
     ExpiredError,
     NotFoundError,
 )
-from app.chestny.services.dedup import (
-    HmacKeyError,
-    find_confirmed_duplicates,
-    load_or_create_hmac_key,
-)
 from app.services.excel_import import (
     FileImportError,
     AcceptedRow,
@@ -149,35 +144,10 @@ def preview_import():
             {"code": "invalid_xlsx", "message": "Файл XLSX не прошёл проверку"}
         ), 400
 
-    # ── HMAC ключ ─────────────────────────────────────────────────────────
-    try:
-        instance_path: str = current_app.instance_path
-        key: bytes = load_or_create_hmac_key(instance_path)
-    except HmacKeyError:
-        return jsonify(
-            {"code": "hmac_key_error", "message": "Ошибка инициализации HMAC-ключа"}
-        ), 503
-
-    # ── Дубликаты ─────────────────────────────────────────────────────────
-    accepted_kis = [row.ki for row in result.accepted]
-    confirmed_duplicates = find_confirmed_duplicates(accepted_kis, key, profile_id)
-
-    # ── Исключённые из-за дублей ──────────────────────────────────────────
+    # Локальная история не исключает КИЗы. Актуальный статус проверяется
+    # непосредственно в Честном знаке перед операцией.
     final_excluded: list[ExcludedRow] = list(result.excluded)
-    final_accepted: list[AcceptedRow] = []
-    for row in result.accepted:
-        if row.ki in confirmed_duplicates:
-            dup = confirmed_duplicates[row.ki]
-            msg = f"Ранее подтверждён: {dup['display_name']}"
-            if dup.get("document_id"):
-                msg += f" (документ: {dup['document_id']})"
-            final_excluded.append(ExcludedRow(
-                row_index=row.row_index,
-                reason_code="previously_confirmed",
-                message=msg,
-            ))
-        else:
-            final_accepted.append(row)
+    final_accepted: list[AcceptedRow] = list(result.accepted)
 
     # ── Сводка ────────────────────────────────────────────────────────────
     by_reason: dict[str, int] = {}

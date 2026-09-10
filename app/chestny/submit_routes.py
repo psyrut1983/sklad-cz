@@ -11,7 +11,7 @@ import requests
 from flask import Blueprint, current_app, jsonify, request
 
 from app.chestny.factory import db
-from app.chestny.models import ImportJob, OrganizationProfile, ProcessedKiz, SubmissionBatch
+from app.chestny.models import ImportJob, OrganizationProfile, SubmissionBatch
 from app.chestny.services.active_imports import ActiveImport, ExpiredError, NotFoundError
 from app.chestny.services.cz_auth import CredentialsSnapshot, PRODUCTION_API_BASE_URL
 from app.chestny.services.cz_auth import (
@@ -121,18 +121,6 @@ def submit_import(token: str):
         submission = _select_submission_rows(active, data)
     except ValueError as exc:
         return jsonify({"code": "invalid_selection", "message": str(exc)}), 400
-
-    # Codes managed by the durable sale/return workflow must not bypass its
-    # reservations and event-history checks through the legacy sale screen.
-    from app.chestny.models import TurnoverEvent
-    from app.chestny.services.dedup import hmac_digest
-    digest_key = load_or_create_hmac_key(current_app.instance_path)
-    if TurnoverEvent.query.filter(
-        TurnoverEvent.profile_id == profile.id,
-        TurnoverEvent.environment == PRODUCTION_API_BASE_URL,
-        TurnoverEvent.code_digest.in_([hmac_digest(r.ki, digest_key) for r in submission.accepted]),
-    ).first():
-        return jsonify(code='use_turnover', message='Для этих кодов используйте раздел «Продажи и возвраты WB»: у них есть история операций'), 409
 
     if not current_app.config.get("TESTING"):
         from app.chestny.services.certificates import (
@@ -263,19 +251,6 @@ def submit_import(token: str):
                 attempts=1,
                 error_message=batch.error,
             ))
-            if batch.status == CONFIRMED:
-                for item in batch.items:
-                    existing = ProcessedKiz.query.filter_by(
-                        profile_id=profile.id, hmac_digest=item.hmac
-                    ).first()
-                    if existing is None:
-                        db.session.add(ProcessedKiz(
-                            hmac_digest=item.hmac,
-                            mask=item.mask,
-                            profile_id=profile.id,
-                            status=CONFIRMED,
-                            document_id=batch.document_id,
-                        ))
         db.session.commit()
     except Exception:
         db.session.rollback()

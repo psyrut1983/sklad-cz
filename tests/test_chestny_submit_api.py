@@ -64,7 +64,7 @@ def test_submit_persists_and_consumes_import(tmp_path):
     with app.app_context():
         assert ImportJob.query.count() == 1
         assert SubmissionBatch.query.count() == 1
-        assert ProcessedKiz.query.count() == 1
+        assert ProcessedKiz.query.count() == 0
     assert app.test_client().get(f"/api/imports/{token}").status_code == 404
 
 
@@ -130,7 +130,7 @@ def test_submit_selected_subset_and_preserve_remainder(tmp_path):
     assert len(inner["products"]) == 2
     assert {p["primary_document_number"] for p in inner["products"]} == {"WB-selection"}
     with app.app_context():
-        assert ProcessedKiz.query.count() == 2
+        assert ProcessedKiz.query.count() == 0
     assert app.test_client().get(f"/api/imports/{token}").status_code == 404
     remainder_token = body["remaining_import"]["import_token"]
     assert app.test_client().get(f"/api/imports/{remainder_token}").status_code == 200

@@ -154,7 +154,7 @@
   $('check').onclick = () => run(async () => {
     const selected = payload().selected_rows;
     const body = await api(`/api/turnover/import/${token}/check`, payload());
-    body.rows.forEach(row => { decisions.set(row.row_index, row.state); checks.set(row.row_index, row.message + (row.local_history ? ' · Есть история' : ' · Нет местной истории')); });
+    body.rows.forEach(row => { decisions.set(row.row_index, row.state); checks.set(row.row_index, row.message); });
     renderRows(); document.querySelectorAll('#rows input').forEach(x => x.checked = selected.includes(Number(x.value)));
     updateReadiness();
   }, 'Проверка КИЗов');

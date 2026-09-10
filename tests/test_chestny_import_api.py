@@ -259,6 +259,28 @@ class TestPreviewErrors:
                         if e["reason_code"] == "previously_confirmed"]
         assert dup_excluded == []
 
+    def test_confirmed_local_record_does_not_exclude_code(self, client, app):
+        """Устаревшая локальная запись не решает, можно ли обработать КИЗ."""
+        _configure_profile("org-sinyavin")
+        raw = _xlsx_bytes()
+
+        from app.chestny.services.dedup import hmac_digest, load_or_create_hmac_key
+        from app.chestny.models import ProcessedKiz
+        from app.services.excel_import import parse_xlsx
+
+        target_ki = parse_xlsx(io.BytesIO(raw)).accepted[0].ki
+        db.session.add(ProcessedKiz(
+            hmac_digest=hmac_digest(target_ki, load_or_create_hmac_key(app.instance_path)),
+            mask=target_ki[:4] + "****" + target_ki[-4:],
+            profile_id="org-sinyavin", status="CONFIRMED", document_id="old-doc",
+        ))
+        db.session.commit()
+
+        resp, body = _post_preview(client)
+        assert resp.status_code == 201
+        assert body["summary"]["accepted"] == 6
+        assert not any(e["reason_code"] == "previously_confirmed" for e in body["excluded"])
+
     def test_no_sign_auth_network_calls_post(self, client, app, monkeypatch):
         """POST: _sign_data/get_uuid_token/requests не вызваны."""
         _configure_profile("org-sinyavin")
