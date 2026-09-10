@@ -54,6 +54,12 @@ class WbEvents:
     counts: dict[str, int] = field(default_factory=dict)
 
 
+def _normalize_currency(value: str) -> str:
+    """Return the ISO code used by CRPT for WB's supported ruble labels."""
+    normalized = value.upper().replace('.', '').strip()
+    return 'RUB' if normalized in {'RUB', 'RUR', 'РУБ', '₽'} else normalized
+
+
 def parse_wb_events(source: str | BinaryIO) -> WbEvents:
     workbook = None
     try:
@@ -87,7 +93,8 @@ def parse_wb_events(source: str | BinaryIO) -> WbEvents:
                 _normalize_date(values[7]) if len(values) > 7 and values[7] else None,
                 cells[7], cells[9], cost_kopecks=(int(_normalize_cost(values[4]))
                     if len(values) > 4 and _normalize_cost(values[4]) is not None else None),
-                currency=cells[5], paid=(bool(cells[3]) if operation == 'Возврат' and bool(cells[3]) == bool(cells[6]) else None),
+                currency=_normalize_currency(cells[5]),
+                paid=(bool(cells[3]) if operation == 'Возврат' and bool(cells[3]) == bool(cells[6]) else None),
             ))
         result.counts = dict(counts)
         return result

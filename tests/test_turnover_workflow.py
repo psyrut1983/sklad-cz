@@ -120,6 +120,39 @@ def test_sale_automatically_fills_document_fields(setup):
     assert body['products'][0]['product_cost'] == 10000
 
 
+def test_sale_accepts_wb_ruble_symbol(setup):
+    _, client, fake = setup
+    fake.status = 'INTRODUCED'
+    book = openpyxl.Workbook(); book.active.title = 'КИЗ'; book.active.append(HEADERS)
+    book.active.append(['order', 'sticker', KI, '', 1490.50, '₽', '',
+                        date.today().isoformat(), 'Продажа', 'Нет'])
+    stream = io.BytesIO(); book.save(stream); book.close(); stream.seek(0)
+    imported = client.post('/api/turnover/import', data=dict(
+        profile_id='org-sinyavin', file=(stream, 'wb.xlsx')))
+    assert imported.status_code == 200
+    event = imported.get_json()['events'][0]
+    assert event['cost_kopecks'] == 149050
+    assert event['currency'] == 'RUB'
+    result = client.post(f"/api/turnover/import/{imported.get_json()['token']}/prepare",
+                         json=dict(selected_rows=[1], defaults=dict(event_confirmed=True)))
+    assert result.status_code == 200, result.get_json()
+
+
+def test_sale_preview_multiple_dates_without_manual_document_fields(setup):
+    from dataclasses import replace
+    from datetime import timedelta
+    app, client, fake = setup
+    token = upload(client, 'Продажа')
+    events = app.extensions['turnover_imports'][token]['events']
+    events.append(replace(events[0], row_index=2, ki='014612345678901221ABC123XYZ7890',
+                          assignment='second', date=(date.today()-timedelta(days=2)).isoformat()))
+    result = client.post(f'/api/turnover/import/{token}/prepare', json=dict(
+        selected_rows=[1, 2], defaults=dict(event_confirmed=True, event_date=date.today().isoformat())))
+    assert result.status_code == 200, result.get_json()
+    assert len(result.get_json()['documents']) == 2
+    assert not fake.sent
+
+
 def test_old_report_does_not_return_new_sale(setup):
     _, client, fake = setup
     doc = send(client, upload(client)); fake.status = 'INTRODUCED'; reconcile(client, doc)

@@ -85,3 +85,12 @@ def test_payment_from_receipt_and_fiscal_drive(receipt, fn, expected):
     values = row(receipt=receipt)
     values[6] = fn
     assert parse_wb_events(workbook([values])).events[0].paid is expected
+
+
+@pytest.mark.parametrize('source', ['RUB', 'RUR', 'руб.', '₽'])
+def test_ruble_currency_labels_are_normalized(source):
+    values = row(op='Продажа')
+    values[5] = source
+    event = parse_wb_events(workbook([values])).events[0]
+    assert event.cost_kopecks == 10000
+    assert event.currency == 'RUB'

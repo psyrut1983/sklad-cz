@@ -50,6 +50,13 @@
       defaults: {event_date: $('event-date').value || null, event_confirmed: $('fact').checked}};
   }
 
+  function price(event) {
+    if (event.cost_kopecks === null || event.cost_kopecks === undefined) return 'Не указана';
+    const amount = Number(event.cost_kopecks) / 100;
+    const currency = event.currency === 'RUB' ? '₽' : event.currency;
+    return `${amount.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${currency || ''}`.trim();
+  }
+
   function renderRows() {
     $('rows').replaceChildren();
     for (const event of events.filter(e => e.operation === $('operation').value)) {
@@ -58,7 +65,7 @@
       input.type = 'checkbox'; input.value = event.row_index;
       input.setAttribute('aria-label', `Выбрать строку ${event.row_index}`);
       input.addEventListener('change', resetReview); td.append(input); tr.append(td);
-      for (const value of [event.row_index, event.mask, event.assignment, event.date || 'Не указана', event.receipt || 'Нет', event.operation === 'Продажа' ? '—' : event.paid === null ? 'Неполные реквизиты' : event.paid ? 'После оплаты' : 'Без оплаты', checks.get(event.row_index) || 'Не проверено']) {
+      for (const value of [event.row_index, event.mask, event.assignment, event.date || 'Не указана', price(event), event.receipt || 'Нет', event.operation === 'Продажа' ? '—' : event.paid === null ? 'Неполные реквизиты' : event.paid ? 'После оплаты' : 'Без оплаты', checks.get(event.row_index) || 'Не проверено']) {
         const cell = document.createElement('td'); cell.textContent = value; tr.append(cell);
       }
       $('rows').append(tr);
@@ -108,12 +115,21 @@
     }
   }
   let busy = false;
-  async function run(fn) {
-    if (busy) return;
+  async function run(fn, action = '') {
+    const result = $('action-result');
+    const actionNotice = (message, error = false) => {
+      if (!action || !result) return;
+      result.hidden = false;
+      result.dataset.error = String(error);
+      result.textContent = message;
+    };
+    if (busy) { actionNotice('Предыдущая операция ещё выполняется. Дождитесь её завершения.'); return; }
+    actionNotice(action + '…');
     busy = true; notice('Выполняется…');
     $('notice').dataset.error = 'false';
     document.dispatchEvent(new CustomEvent('turnover-ui-busy', {detail: true}));
-    try { await fn(); notice('Готово'); } catch (error) { $('notice').dataset.error = 'true'; notice(error.message); }
+    try { await fn(); notice('Готово'); actionNotice(action + ': готово.'); }
+    catch (error) { $('notice').dataset.error = 'true'; notice(error.message); actionNotice(action + ': ' + error.message, true); }
     finally { busy = false; document.dispatchEvent(new CustomEvent('turnover-ui-busy', {detail: false})); }
   }
   $('upload').onclick = () => run(async () => {
@@ -141,12 +157,13 @@
     body.rows.forEach(row => { decisions.set(row.row_index, row.state); checks.set(row.row_index, row.message + (row.local_history ? ' · Есть история' : ' · Нет местной истории')); });
     renderRows(); document.querySelectorAll('#rows input').forEach(x => x.checked = selected.includes(Number(x.value)));
     updateReadiness();
-  });
+  }, 'Проверка КИЗов');
   $('prepare').onclick = () => run(async () => {
+    resetReview();
     const data = payload(); const body = await api(`/api/turnover/import/${token}/prepare`, data);
     reviewed = JSON.stringify(data); $('prepared').textContent = body.documents.map(d => `Документ ${d.index}: ${d.operation}, ${d.count} кодов${d.date ? ', дата ' + d.date : ''}`).join(' · ');
     updateReadiness();
-  });
+  }, 'Подготовка документов');
   $('submit').onclick = () => run(async () => {
     const data = payload(); if (JSON.stringify(data) !== reviewed) throw new Error('Обновите предпросмотр документов');
     if (!window.confirm($('prepared').textContent + '\nПодписать и отправить в Честный знак?')) return;

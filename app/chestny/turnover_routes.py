@@ -170,7 +170,8 @@ def import_file():
     return jsonify(token=token, counts=result.counts, excluded=result.excluded,
         events=[dict(row_index=e.row_index, mask=mask_ki(e.ki), operation=e.operation,
                      assignment=e.assignment, date=e.date, receipt=e.receipt,
-                     paid=e.paid, has_identity=e.has_order_identity) for e in result.events])
+                     paid=e.paid, cost_kopecks=e.cost_kopecks, currency=e.currency,
+                     has_identity=e.has_order_identity) for e in result.events])
 
 
 @turnover.delete('/api/turnover/import/<token>')
@@ -253,7 +254,10 @@ def body_for(profile, events, fields):
     dates = set()
     for e in events:
         if e.cost_kopecks is None or e.cost_kopecks <= 0 or e.currency != 'RUB':
-            raise ValueError('Для продажи нужна положительная стоимость в RUB')
+            value = ('не указана' if e.cost_kopecks is None else f'{e.cost_kopecks / 100:.2f}')
+            raise ValueError(
+                f'Строка WB {e.row_index}: нужна положительная стоимость в рублях '
+                f'(распознано: {value} {e.currency or "валюта не указана"})')
         dates.add(fields[e.row_index]['event_date'])
         products.append(dict(cis=e.ki, product_cost=e.cost_kopecks))
     if len(dates) != 1 or not profile.fias_id:
