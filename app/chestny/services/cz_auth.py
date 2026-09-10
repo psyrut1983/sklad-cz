@@ -207,7 +207,24 @@ class RequestsTransport(HttpTransport):
         except requests.exceptions.ConnectionError:
             raise NetworkError("Сетевая ошибка") from None
 
-    def _handle_response(self, r: Any) -> Any:
+    def post_json_or_text(self, url: str, payload: dict[str, Any],
+                          headers: dict[str, str] | None = None,
+                          timeout: float = 15) -> Any:
+        """POST JSON and accept a successful plain-text response.
+
+        CRPT's document-creation endpoint can return an unquoted UUID even
+        though the other API endpoints return JSON.
+        """
+        import requests
+        try:
+            r = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            return self._handle_response(r, allow_text=True)
+        except requests.exceptions.Timeout:
+            raise TimeoutError("Таймаут соединения с ЧЗ") from None
+        except requests.exceptions.ConnectionError:
+            raise NetworkError("Сетевая ошибка") from None
+
+    def _handle_response(self, r: Any, allow_text: bool = False) -> Any:
         if r.status_code == 429:
             raise RateLimitError("Превышен лимит запросов к ЧЗ")
         if 500 <= r.status_code < 600:
@@ -228,6 +245,10 @@ class RequestsTransport(HttpTransport):
         try:
             return r.json()
         except Exception:
+            if allow_text:
+                text = (getattr(r, "text", "") or "").strip()
+                if text:
+                    return text
             raise TokenParseError("Ответ ЧЗ не является JSON") from None
 
 

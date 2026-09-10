@@ -153,6 +153,25 @@ def test_sale_preview_multiple_dates_without_manual_document_fields(setup):
     assert not fake.sent
 
 
+def test_successful_first_sale_document_does_not_stop_later_dates(setup):
+    from dataclasses import replace
+    from datetime import timedelta
+    app, client, fake = setup
+    fake.status = 'INTRODUCED'
+    token = upload(client, 'Продажа')
+    events = app.extensions['turnover_imports'][token]['events']
+    events.append(replace(events[0], row_index=2,
+                          ki='014612345678901221ABC123XYZ7890', assignment='second',
+                          date=(date.today() - timedelta(days=2)).isoformat()))
+
+    response = client.post(f'/api/turnover/import/{token}/submit', json=dict(
+        selected_rows=[1, 2], confirmed=True, defaults=dict(event_confirmed=True)))
+
+    assert response.status_code == 201, response.get_json()
+    assert [doc['state'] for doc in response.get_json()['documents']] == ['SENT', 'SENT']
+    assert len(fake.sent) == 2
+
+
 def test_old_report_can_be_retried_when_crpt_current_state_allows_it(setup):
     _, client, fake = setup
     doc = send(client, upload(client)); fake.status = 'INTRODUCED'; reconcile(client, doc)
@@ -241,6 +260,26 @@ def test_exact_document_matching():
             return [dict(number='wrong', type='LP_RETURN', senderInn='123456789012')]
     with pytest.raises(ValueError):
         TurnoverClient(Auth(), Transport()).document('wanted', 'LP_RETURN', '123456789012')
+
+
+def test_document_creation_uses_plain_text_capable_transport():
+    document_id = '12345678-1234-1234-1234-123456789012'
+
+    class Auth:
+        class credentials:
+            api_base_url = 'https://markirovka.crpt.ru/api/v3/true-api'
+
+        def get_token(self):
+            return 'token'
+
+    class Transport:
+        def post_json(self, *args, **kwargs):
+            raise AssertionError('JSON-only parser must not handle document creation')
+
+        def post_json_or_text(self, *args, **kwargs):
+            return document_id
+
+    assert TurnoverClient(Auth(), Transport()).create({}) == document_id
 
 
 def test_batch_limit_and_untransmitted_cancellation(setup):

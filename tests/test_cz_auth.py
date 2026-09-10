@@ -27,6 +27,7 @@ from app.chestny.services.cz_auth import (
     NetworkError,
     SigningError,
     UnauthorizedError,
+    RequestsTransport,
     PRODUCTION_API_BASE_URL,
 )
 
@@ -818,3 +819,24 @@ class TestSignerResult:
         client = make_client(signer=EmptySigner())
         with pytest.raises(SigningError):
             client.get_token()
+
+
+def test_document_creation_transport_accepts_plain_text_uuid() -> None:
+    document_id = "12345678-1234-1234-1234-123456789012"
+
+    class Response:
+        status_code = 201
+        text = document_id
+
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            raise ValueError("plain text")
+
+    transport = RequestsTransport()
+    assert transport._handle_response(Response(), allow_text=True) == document_id
+    with pytest.raises(TokenParseError):
+        transport._handle_response(Response())

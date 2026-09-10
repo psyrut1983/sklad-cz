@@ -65,9 +65,10 @@ class TurnoverClient:
 
     def create(self, envelope):
         # Do not retry a mutating request, including after an ambiguous timeout.
-        response = self.transport.post_json(self.base + '/lk/documents/create?pg=lp',
-                    envelope, headers={'Authorization': 'Bearer ' + self.auth.get_token(),
-                                       'Accept': 'application/json'}, timeout=60)
+        post = getattr(self.transport, 'post_json_or_text', self.transport.post_json)
+        response = post(self.base + '/lk/documents/create?pg=lp', envelope,
+                    headers={'Authorization': 'Bearer ' + self.auth.get_token(),
+                             'Accept': 'application/json'}, timeout=60)
         if isinstance(response, dict):
             response = response.get('documentId') or response.get('id') or response.get('value')
         try:
